@@ -1,0 +1,11 @@
+{
+  "name": "obsidian-bambu-print-sync",
+  "version": "0.1.0",
+  "description": "Obsidian plugin: Bambu Lab print history, print planning and filament spool tracking.",
+  "private": true,
+  "scripts": {
+    "test": "node test/sync.test.js",
+    "check": "node --check main.js"
+  },
+  "license": "MIT"
+}
