@@ -123,6 +123,28 @@ const STRINGS = {
     pasteReplace: "Replace the pasted link with a link to the print note",
     pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
     openModel: "Open the model",
+    hCost: "Print cost",
+    costDesc: "The plugin writes cost_filament, cost_power, cost_wear and cost into each print. Finished prints keep the cost they had; use the recalculate command after changing rates.",
+    printerModel: "Printer model",
+    printerModelDesc: "Sets a typical average power draw. Adjust the watts if you measured yours.",
+    printerOther: "Other",
+    powerW: "Average power, W",
+    kwhPrice: "Electricity price per kWh",
+    printerPrice: "Printer price",
+    lifetimeH: "Printer lifetime, hours",
+    lifetimeHDesc: "Depreciation per printing hour = printer price ÷ lifetime hours.",
+    maintPerHour: "Maintenance per hour",
+    maintPerHourDesc: "Nozzles, build plates, belts and lubricant, spread over printing hours.",
+    currency: "Currency symbol",
+    machineRate: "Machine cost per printing hour: {v}",
+    cmdRecalc: "Recalculate cost of all prints",
+    recalc: "Recalculate all prints",
+    recalcDone: "Bambu: cost recalculated for {n} print(s)",
+    welcomeTitle: "Set up print tracking",
+    welcomeText: "Create the folders for prints and spools and a table with the queue, totals by month, cost and spools? Nothing else in your vault is touched.",
+    welcomeCreate: "Create",
+    welcomeSkip: "Not now",
+    welcomeLater: "You can do it later with the command “Create tracker base”.",
     newSpoolName: "New spool",
   },
   ru: {
@@ -222,6 +244,28 @@ const STRINGS = {
     pasteReplace: "Заменять вставленную ссылку ссылкой на заметку печати",
     pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
     openModel: "Открыть модель",
+    hCost: "Стоимость печати",
+    costDesc: "Плагин записывает в каждую печать cost_filament, cost_power, cost_wear и cost. Завершённые печати сохраняют свою стоимость; после смены тарифов запусти пересчёт.",
+    printerModel: "Модель принтера",
+    printerModelDesc: "Задаёт типичную среднюю мощность. Поправь ватты, если измерял свой.",
+    printerOther: "Другой",
+    powerW: "Средняя мощность, Вт",
+    kwhPrice: "Цена электричества за кВт·ч",
+    printerPrice: "Цена принтера",
+    lifetimeH: "Ресурс принтера, часов",
+    lifetimeHDesc: "Амортизация за час печати = цена принтера ÷ ресурс в часах.",
+    maintPerHour: "Обслуживание за час",
+    maintPerHourDesc: "Сопла, столы, ремни, смазка — в пересчёте на час печати.",
+    currency: "Символ валюты",
+    machineRate: "Стоимость часа работы принтера: {v}",
+    cmdRecalc: "Пересчитать стоимость всех печатей",
+    recalc: "Пересчитать все печати",
+    recalcDone: "Bambu: стоимость пересчитана для печатей: {n}",
+    welcomeTitle: "Настроить учёт печати",
+    welcomeText: "Создать папки для печатей и катушек и таблицу с очередью, итогами по месяцам, стоимостью и катушками? Больше ничего в хранилище не изменится.",
+    welcomeCreate: "Создать",
+    welcomeSkip: "Не сейчас",
+    welcomeLater: "Это можно сделать позже командой «Создать базу учёта».",
     newSpoolName: "Новая катушка",
   },
 };
@@ -253,6 +297,7 @@ const LOCALE_DEFAULTS = {
     statusFailed: "Failed",
     spoolOpen: "In use",
     spoolEmpty: "Empty",
+    currency: "$",
   },
   ru: {
     printsFolder: "3D печать/Печати",
@@ -263,6 +308,7 @@ const LOCALE_DEFAULTS = {
     statusFailed: "Провал",
     spoolOpen: "Открыта",
     spoolEmpty: "Пустая",
+    currency: "₽",
   },
 };
 
@@ -279,14 +325,71 @@ const DEFAULT_SETTINGS = Object.assign(
     autoDeduct: true,
     pasteToQueue: true,
     pasteReplace: false,
+    printerModel: "P1S",
+    powerW: 120,
+    kwhPrice: 0,
+    printerPrice: 0,
+    lifetimeH: 4000,
+    maintPerHour: 0,
+    onboarded: false,
     lastSync: 0,
   },
   LOCALE_DEFAULTS[LANG]
 );
 
+/** Typical average power while printing, in watts. Approximate; users can override. */
+const PRINTER_POWER = {
+  "A1 mini": 80,
+  A1: 95,
+  P1P: 110,
+  P1S: 120,
+  P2S: 130,
+  "X1 Carbon": 135,
+  X1E: 160,
+  H2S: 170,
+  H2D: 200,
+};
+
 /* ------------------------------------------------------------------ */
 /* pure helpers (exported for tests)                                   */
 /* ------------------------------------------------------------------ */
+
+function num(v) {
+  const n = typeof v === "number" ? v : parseFloat(String(v == null ? "" : v).replace(",", "."));
+  return isFinite(n) ? n : 0;
+}
+
+function round2(x) {
+  return Math.round(x * 100) / 100;
+}
+
+/**
+ * Cost of one print.
+ * `spoolPrice(link)` returns the price per kg of a spool, or 0 if unknown.
+ * Returns null when the note has neither grams nor time.
+ */
+function computeCost(fm, spoolPrice, st) {
+  const hours = num(fm.time_h) + num(fm.time_m) / 60;
+  const grams = num(fm.grams);
+  if (!hours && !grams) return null;
+
+  let filament = 0;
+  const override = num(fm.price_kg);
+  const parts = parseUsage(fm.usage);
+  if (override) filament = (grams * override) / 1000;
+  else if (parts.length) filament = parts.reduce((sum, p) => sum + (p.grams * spoolPrice(p.link)) / 1000, 0);
+  else if (fm.spool) filament = (grams * spoolPrice(linkTarget(fm.spool))) / 1000;
+
+  const power = (hours * num(st.powerW) * num(st.kwhPrice)) / 1000;
+  const life = num(st.lifetimeH);
+  const wear = hours * ((life > 0 ? num(st.printerPrice) / life : 0) + num(st.maintPerHour));
+  return {
+    cost_filament: round2(filament),
+    cost_power: round2(power),
+    cost_wear: round2(wear),
+    cost: round2(filament + power + wear),
+  };
+}
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -466,12 +569,15 @@ function buildBase(root, st, lang) {
         status: "Статус", spool: "Катушка", grams: "Граммы", printed: "Дата печати", hours: "Часы", time: "Время",
         cost: "Стоимость", priceKg: "Цена за кг", monthCol: "Месяц", usage: "Расход", material: "Материал",
         color: "Цвет", brand: "Бренд", remaining: "Остаток, г", spoolStatus: "Состояние", left: "Остаток",
-        warn: "Внимание", low: "⚠️ заканчивается", noDate: "без даты", h: "ч ", m: "м", g: " г", model: "Модель", digits: 0 }
+        warn: "Внимание", low: "⚠️ заканчивается", noDate: "без даты", h: "ч ", m: "м", g: " г", model: "Модель", digits: 0,
+        costView: "Стоимость", fil: "Пластик", power: "Электричество", wear: "Износ" }
     : { queue: "Queue", all: "All prints", month: "By month", failed: "Failed", spools: "Spools",
         status: "Status", spool: "Spool", grams: "Grams", printed: "Printed", hours: "Hours", time: "Time",
         cost: "Cost", priceKg: "Price per kg", monthCol: "Month", usage: "Usage", material: "Material",
         color: "Colour", brand: "Brand", remaining: "Remaining, g", spoolStatus: "State", left: "Left",
-        warn: "Attention", low: "⚠️ running low", noDate: "no date", h: "h ", m: "m", g: " g", model: "Model", digits: 2 };
+        warn: "Attention", low: "⚠️ running low", noDate: "no date", h: "h ", m: "m", g: " g", model: "Model", digits: 2,
+        costView: "Cost breakdown", fil: "Filament", power: "Electricity", wear: "Wear" };
+  const cur = st.currency ? " " + st.currency : "";
   return `filters:
   and:
     - file.inFolder(${q(root)})
@@ -479,9 +585,9 @@ formulas:
   hours: (if(time_h, time_h, 0) + if(time_m, time_m, 0) / 60).round(1)
   time: if(time_h || time_m, if(time_h, time_h, 0) + ${q(L.h)} + if(time_m, time_m, 0) + ${q(L.m)}, "")
   price_kg: if(price_kg, price_kg, if(spool, (spool.asFile().properties.price / spool.asFile().properties.weight_g * 1000).round(0), ""))
-  cost: if(grams && formula.price_kg, (grams * formula.price_kg / 1000).round(${L.digits}), "")
+  cost: if(cost, cost, if(grams && formula.price_kg, (grams * formula.price_kg / 1000).round(${L.digits}), ""))
   month: if(printed, date(printed).format("YYYY-MM"), ${q(L.noDate)})
-  card: if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "")
+  card: if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "") + if(formula.cost, "  ·  " + formula.cost + ${q(cur)}, "")
   spool_price_kg: if(price && weight_g, (price / weight_g * 1000).round(0), "")
   remaining_pct: if(remaining_g && weight_g, (remaining_g / weight_g * 100).round(0) + "%", "")
   low: if(remaining_g && remaining_g < 150 && spool_status != ${q(st.spoolEmpty)}, ${q(L.low)}, "")
@@ -524,6 +630,12 @@ properties:
     displayName: ${q(L.warn)}
   note.model_url:
     displayName: ${q(L.model)}
+  note.cost_filament:
+    displayName: ${q(L.fil)}
+  note.cost_power:
+    displayName: ${q(L.power)}
+  note.cost_wear:
+    displayName: ${q(L.wear)}
 views:
   - type: kanban
     name: ${q(L.queue)}
@@ -597,6 +709,31 @@ views:
       - formula.cost
     summaries:
       grams: Sum
+      formula.cost: Sum
+  - type: table
+    name: ${q(L.costView)}
+    filters:
+      and:
+        - type == "print"
+        - status != ${q(st.statusPlanned)}
+    order:
+      - file.name
+      - printed
+      - grams
+      - formula.hours
+      - cost_filament
+      - cost_power
+      - cost_wear
+      - formula.cost
+    sort:
+      - property: printed
+        direction: DESC
+    summaries:
+      grams: Sum
+      formula.hours: Sum
+      cost_filament: Sum
+      cost_power: Sum
+      cost_wear: Sum
       formula.cost: Sum
   - type: table
     name: ${q(L.spools)}
@@ -683,6 +820,10 @@ class BambuPrintSync extends Plugin {
     this.addCommand({ id: "new-spool", name: t("cmdNewSpool"), callback: () => this.newNote("spool") });
     this.addCommand({ id: "create-base", name: t("cmdBase"), callback: () => this.createBase() });
     this.addCommand({ id: "add-link", name: t("cmdAddLink"), callback: () => new AddLinkModal(this.app, this).open() });
+    this.addCommand({ id: "recalc-cost", name: t("cmdRecalc"), callback: () => this.recalcAll(true) });
+
+    this.costTimers = new Map();
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => this.onNoteChanged(file)));
 
     this.registerEvent(
       this.app.workspace.on("editor-paste", (evt, editor) => this.onPaste(evt, editor))
@@ -691,6 +832,7 @@ class BambuPrintSync extends Plugin {
     this.addSettingTab(new BambuSettingTab(this.app, this));
 
     this.app.workspace.onLayoutReady(() => {
+      this.maybeOnboard();
       if (this.settings.syncOnStart && this.settings.token) this.sync(true);
     });
     this.restartTimer();
@@ -1080,6 +1222,81 @@ class BambuPrintSync extends Plugin {
     }
   }
 
+  /* ---------- cost ---------- */
+
+  spoolPricePerKg(link, sourcePath) {
+    const file = link && this.app.metadataCache.getFirstLinkpathDest(link, sourcePath || "");
+    if (!(file instanceof TFile)) return 0;
+    const fm = this.fm(file);
+    const price = num(fm.price);
+    const weight = num(fm.weight_g) || 1000;
+    return price > 0 ? (price / weight) * 1000 : 0;
+  }
+
+  isPrint(file) {
+    return file instanceof TFile && file.path.startsWith(normalizePath(this.settings.printsFolder) + "/") && this.fm(file).type === "print";
+  }
+
+  isSpool(file) {
+    return file instanceof TFile && file.path.startsWith(normalizePath(this.settings.spoolsFolder) + "/") && this.fm(file).type === "spool";
+  }
+
+  onNoteChanged(file) {
+    const targets = this.isPrint(file)
+      ? [file]
+      : this.isSpool(file)
+        ? this.filesIn(this.settings.printsFolder).filter((f) => linkTarget(this.fm(f).spool) === file.basename || parseUsage(this.fm(f).usage).some((u) => u.link === file.basename))
+        : [];
+    for (const f of targets) {
+      clearTimeout(this.costTimers.get(f.path));
+      this.costTimers.set(f.path, setTimeout(() => {
+        this.costTimers.delete(f.path);
+        this.updateCost(f, false);
+      }, 400));
+    }
+  }
+
+  /** Write the cost into a print note. Finished prints with a cost keep it unless forced. */
+  async updateCost(file, force) {
+    const fm = this.fm(file);
+    if (fm.type !== "print") return false;
+    const st = this.settings;
+    const final = [st.statusDone, st.statusFailed].includes(fm.status);
+    if (!force && final && fm.cost !== undefined && fm.cost !== null && fm.cost !== "") return false;
+    const c = computeCost(fm, (link) => this.spoolPricePerKg(link, file.path), st);
+    if (!c) return false;
+    if (Object.keys(c).every((k) => num(fm[k]) === c[k] && fm[k] !== undefined)) return false;
+    await this.app.fileManager.processFrontMatter(file, (f) => Object.assign(f, c));
+    return true;
+  }
+
+  async recalcAll(manual) {
+    let n = 0;
+    for (const f of this.filesIn(this.settings.printsFolder)) if (await this.updateCost(f, true)) n++;
+    if (manual) new Notice(t("recalcDone", { n }));
+    return n;
+  }
+
+  /* ---------- onboarding ---------- */
+
+  async maybeOnboard() {
+    if (this.settings.onboarded) return;
+    const root = this.rootFolder();
+    const exists = this.app.vault.getAbstractFileByPath(normalizePath(this.settings.printsFolder)) ||
+      this.app.vault.getFiles().some((f) => f.extension === "base" && f.path.startsWith(root + "/"));
+    this.settings.onboarded = true;
+    await this.saveSettings();
+    if (!exists) new WelcomeModal(this.app, this).open();
+  }
+
+  async setupTracker() {
+    await this.ensureFolder(this.settings.printsFolder);
+    await this.ensureFolder(this.settings.spoolsFolder);
+    const path = await this.createBase();
+    const file = path && this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
   async createBase() {
     const root = this.rootFolder();
     await this.ensureFolder(root);
@@ -1087,10 +1304,11 @@ class BambuPrintSync extends Plugin {
     const path = normalizePath(`${root}/${name}`);
     if (this.app.vault.getAbstractFileByPath(path)) {
       new Notice(t("baseExists", { path }));
-      return;
+      return path;
     }
     await this.app.vault.create(path, buildBase(root, this.settings, LANG));
     new Notice(t("baseCreated", { path }));
+    return path;
   }
 
   /* ---------- login ---------- */
@@ -1263,6 +1481,37 @@ class LoginModal extends Modal {
 /* add-by-link modal                                                   */
 /* ------------------------------------------------------------------ */
 
+class WelcomeModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    this.setTitle ? this.setTitle(t("welcomeTitle")) : contentEl.createEl("h3", { text: t("welcomeTitle") });
+    contentEl.createEl("p", { text: t("welcomeText") });
+    const s = this.plugin.settings;
+    const list = contentEl.createEl("ul");
+    list.createEl("li", { text: s.printsFolder });
+    list.createEl("li", { text: s.spoolsFolder });
+    list.createEl("li", { text: `${this.plugin.rootFolder()}/${LANG === "ru" ? "3D печать" : "3D printing"}.base` });
+    new Setting(contentEl)
+      .addButton((b) => b.setButtonText(t("welcomeSkip")).onClick(() => {
+        new Notice(t("welcomeLater"));
+        this.close();
+      }))
+      .addButton((b) => b.setCta().setButtonText(t("welcomeCreate")).onClick(async () => {
+        this.close();
+        await this.plugin.setupTracker();
+      }));
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class AddLinkModal extends Modal {
   constructor(app, plugin) {
     super(app);
@@ -1417,6 +1666,32 @@ class BambuSettingTab extends PluginSettingTab {
     toggle(t("pasteToQueue"), "pasteToQueue", t("pasteToQueueDesc"));
     toggle(t("pasteReplace"), "pasteReplace", t("pasteReplaceDesc"));
 
+    new Setting(containerEl).setName(t("hCost")).setDesc(t("costDesc")).setHeading();
+    const numeric = (v) => Math.max(0, num(v));
+    new Setting(containerEl)
+      .setName(t("printerModel"))
+      .setDesc(t("printerModelDesc"))
+      .addDropdown((d) => {
+        for (const m of Object.keys(PRINTER_POWER)) d.addOption(m, `Bambu Lab ${m} · ~${PRINTER_POWER[m]} W`);
+        d.addOption("other", t("printerOther"));
+        d.setValue(PRINTER_POWER[s.printerModel] ? s.printerModel : "other").onChange(async (v) => {
+          s.printerModel = v;
+          if (PRINTER_POWER[v]) s.powerW = PRINTER_POWER[v];
+          await save();
+          this.display();
+        });
+      });
+    text(t("powerW"), "powerW", null, numeric);
+    text(t("kwhPrice"), "kwhPrice", null, numeric);
+    text(t("printerPrice"), "printerPrice", null, numeric);
+    text(t("lifetimeH"), "lifetimeH", t("lifetimeHDesc"), numeric);
+    text(t("maintPerHour"), "maintPerHour", t("maintPerHourDesc"), numeric);
+    text(t("currency"), "currency");
+    const rate = (num(s.powerW) * num(s.kwhPrice)) / 1000 + (num(s.lifetimeH) > 0 ? num(s.printerPrice) / num(s.lifetimeH) : 0) + num(s.maintPerHour);
+    new Setting(containerEl)
+      .setName(t("machineRate", { v: `${round2(rate)} ${s.currency || ""}`.trim() }))
+      .addButton((b) => b.setButtonText(t("recalc")).onClick(() => this.plugin.recalcAll(true)));
+
     new Setting(containerEl).setName(t("hStatuses")).setDesc(t("statusesDesc")).setHeading();
     text(t("stPlanned"), "statusPlanned");
     text(t("stPrinting"), "statusPrinting");
@@ -1430,4 +1705,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, LOCALE_DEFAULTS };
+module.exports._test = { taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };

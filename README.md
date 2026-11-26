@@ -26,13 +26,15 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
 | 🧵 **Spools** | Finds the spool by material and AMS colour, splits multi-colour prints across spools, and deducts grams once per print. |
-| 💸 **Cost** | Price per kg comes from the spool note; Bases adds up grams, hours and money per month. |
+| 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. |
 | ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job; the plugin scales it by how far the job got and marks it as an estimate. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
 
 ## Screenshots
 
 <p align="center"><img src="assets/screenshots/queue.png" alt="Queue board: planned, printing, done and failed prints" width="100%"></p>
+
+<p align="center"><img src="assets/screenshots/cost.png" alt="Cost breakdown: filament, electricity and wear per print" width="100%"></p>
 
 <table>
   <tr>
@@ -69,8 +71,8 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 1. Install the plugin (Community plugins → Browse → *Bambu Print Sync*), or put `main.js` and `manifest.json` from the [latest release](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) into `.obsidian/plugins/bambu-print-sync/`.
 2. Open the plugin settings, click **Log in** and enter your Bambu Lab email and password. If Bambu sends a code by email, the plugin asks for it.
-3. Set **Import prints since** to today if you do not want your whole history.
-4. Run **Create tracker base** from the command palette. It writes a `.base` file with five views next to your prints folder.
+3. On first start the plugin offers to create the prints and spools folders and the tracker table. Skipped it? Run **Create tracker base** later.
+4. Set **Import prints since** to today if you do not want your whole history, and fill in the **Print cost** section (see below).
 5. Queue a model by pasting its MakerWorld or Printables link into any note, or run **Add model to queue by link**.
 6. Add your spools with **New spool note**, filling `material`, `color_hex`, `price` and `weight_g`.
 7. Click the printer icon in the ribbon, or wait for the automatic sync.
@@ -83,7 +85,8 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
 | Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
 | New print note / New spool note | Creates a note with the right properties in the configured folder. |
-| Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed and Spools views. |
+| Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
+| Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |
 | Log in to Bambu account | Opens the login window. |
 
 ## Note properties
@@ -106,6 +109,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `bambu_task_id`, `bambu_title`, `printer`, `time_est_min`, `source` | | sync |
 | `spool_deducted` | `true` | plugin, after deducting |
 | `price_kg` | `1990` | you, optional override of the spool price |
+| `cost_filament`, `cost_power`, `cost_wear`, `cost` | `1.06`, `0.06`, `0.67`, `1.79` | plugin |
 
 </details>
 
@@ -126,6 +130,26 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 ### Matching a job to a planned note
 
 A planned or printing note created from a MakerWorld link is linked by the model ID, which is exact. Otherwise a note is linked when its name matches the job name after both are normalised: lower case, without `.3mf`, `plate N`, underscores and dashes. `Shelf_bracket.3mf` matches a note called `Shelf bracket`. If your note has another name, put the cloud name in `bambu_title`.
+
+### Print cost
+
+Set the rates once in the settings:
+
+| Setting | Example | Used for |
+|---|---|---|
+| Printer model | Bambu Lab P2S · ~130 W | fills in the average power; edit the watts if you measured yours |
+| Electricity price per kWh | `0.18` | `hours × W ÷ 1000 × price` |
+| Printer price, lifetime hours | `800`, `4000` | depreciation: `hours × price ÷ lifetime` |
+| Maintenance per hour | `0.05` | nozzles, plates, belts, lubricant |
+| Currency symbol | `$` | shown on the queue cards |
+
+```
+cost = grams × price per kg ÷ 1000            (filament, per spool for multi-colour prints)
+     + hours × watts ÷ 1000 × price per kWh   (electricity)
+     + hours × (printer price ÷ lifetime hours + maintenance per hour)   (wear)
+```
+
+The plugin writes `cost_filament`, `cost_power`, `cost_wear` and `cost` into a print whenever its grams, time or spool change. Once a print is done or failed, its cost stays as it was, so changing your electricity tariff does not rewrite history; run **Recalculate cost of all prints** when you want that. The settings show your machine cost per printing hour. Power values for printer models are typical averages, not measurements.
 
 ### Queue from a link
 

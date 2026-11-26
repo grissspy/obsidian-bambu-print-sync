@@ -62,7 +62,7 @@ require.cache.obsidian = { id: "obsidian", filename: "obsidian", loaded: true, e
 global.window = { setInterval: () => 1, clearInterval() {} };
 
 const Plugin = require(path.join(__dirname, "..", "main.js"));
-const { LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase, parseModelUrl } = Plugin._test;
+const { LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase, parseModelUrl, computeCost } = Plugin._test;
 
 /* ---------- fake vault ---------- */
 
@@ -89,6 +89,7 @@ const app = {
     },
   },
   metadataCache: {
+    on: () => ({}),
     getFileCache: (f) => ({ frontmatter: files.get(f.path).fm }),
     getFirstLinkpathDest: (name) => {
       const hit = [...files.values()].find((x) => x.file.basename === name);
@@ -137,6 +138,14 @@ fixture = {
   assert.equal(normalizeName("Shelf_bracket plate 2.3mf"), "shelf bracket");
   assert.deepEqual(parseUsage(["[[A|x]]: 1,5", "junk"]), [{ link: "A", grams: 1.5 }]);
   assert.ok(buildBase("3D", ru, "ru").includes('- "Провал"'));
+
+  // Cost: 50 g at 25/kg, 2 h at 130 W and 0.20/kWh, printer 800 over 4000 h plus 0.05/h maintenance.
+  const rates = { powerW: 130, kwhPrice: 0.2, printerPrice: 800, lifetimeH: 4000, maintPerHour: 0.05 };
+  const c = computeCost({ grams: 50, time_h: 2, time_m: 0, spool: "[[S]]" }, () => 25, rates);
+  assert.deepEqual(c, { cost_filament: 1.25, cost_power: 0.05, cost_wear: 0.5, cost: 1.8 });
+  const multi = computeCost({ grams: 10, time_h: 0, time_m: 30, usage: ["[[A]]: 6", "[[B]]: 4"] }, (l) => (l === "A" ? 20 : 30), rates);
+  assert.equal(multi.cost_filament, 0.24);
+  assert.equal(computeCost({ status: "Planned" }, () => 0, rates), null);
 
   const mw = parseModelUrl("https://makerworld.com/en/models/777001-cable-clip-for-desk#profileId-55");
   assert.deepEqual([mw.site, mw.id, mw.title, mw.profileId], ["MakerWorld", "777001", "Cable clip for desk", "55"]);
@@ -196,6 +205,15 @@ fixture = {
   const clip = get("Cable clip");
   assert.equal(clip.bambu_task_id, "4", "linked by MakerWorld model ID although the names differ");
   assert.equal(clip.status, ru.statusDone);
+
+  // Cost is written into prints and frozen once final.
+  Object.assign(plugin.settings, rates);
+  files.get(S + "PLA Black.md").fm.price = 20;
+  assert.equal(await plugin.updateCost(files.get(P + "Shelf bracket.md").file, false), true);
+  assert.equal(get("Shelf bracket").cost_filament, 0.85);
+  plugin.settings.kwhPrice = 1;
+  assert.equal(await plugin.updateCost(files.get(P + "Shelf bracket.md").file, false), false, "final print keeps its cost");
+  assert.ok((await plugin.recalcAll(false)) >= 1, "recalculate all updates final prints");
 
   await plugin.sync();
   assert.equal(get("PLA Black").remaining_g, 870 - 42.4 - 30, "no double deduction");
