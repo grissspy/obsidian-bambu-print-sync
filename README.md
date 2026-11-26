@@ -25,6 +25,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
 | 📎 **Queue from a link** | Click **Add model** above the board, paste a MakerWorld, Printables, Thingiverse or Cults3D link, and a planned print with the model's picture appears in the queue. |
 | 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. |
+| 🎨 **Spools by colour** | *New spool* shows the material and colour pairs your printer actually used, as colour tiles; pick one, or choose a material from the list and a colour with the colour picker. When adding a model you can pick the spool by colour too. |
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
@@ -87,7 +88,9 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | Sync prints from Bambu cloud | Imports new jobs, updates running ones, then deducts filament. |
 | Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
 | Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
-| New print note / New spool note | Creates a note with the right properties in the configured folder. |
+| New print note | Creates a print note with the right properties in the configured folder. |
+| New spool note | Opens the spool window: colour tiles from your prints, material list, colour picker, brand, weight and price. |
+| Choose the spool for this print | Pick a spool by colour for the open print note. |
 | Create print dashboard | Creates a note with spending tiles and the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |

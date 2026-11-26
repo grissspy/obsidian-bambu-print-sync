@@ -67,3 +67,71 @@
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+/* Colour squares: the colour itself comes from data via --bambu-swatch. */
+.bambu-swatch-color {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--background-modifier-border-hover);
+  background: var(--bambu-swatch, transparent);
+}
+
+.bambu-swatch-color.is-large {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-s);
+}
+
+/* Colour tiles in the "New spool" window. */
+.bambu-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--size-4-2);
+  margin: var(--size-4-2) 0 var(--size-4-4);
+}
+
+.bambu-swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  height: auto;
+  padding: var(--size-4-2);
+  text-align: start;
+  white-space: normal;
+}
+
+.bambu-swatch.is-active,
+.bambu-chip.is-active {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+  background-color: hsla(var(--interactive-accent-hsl), 0.2);
+}
+
+.bambu-swatch-title {
+  font-weight: var(--font-semibold);
+}
+
+.bambu-swatch-sub {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* Spool chips when planning a print. */
+.bambu-pick {
+  margin: var(--size-4-3) 0;
+}
+
+.bambu-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-2);
+}
+
+.bambu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}

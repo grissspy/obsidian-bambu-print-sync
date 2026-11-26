@@ -58,6 +58,28 @@ const STRINGS = {
     deductNone: "Bambu: nothing to deduct",
     spoolMissing: "{note}: spool “{spool}” not found",
     imported: "Imported from the Bambu cloud.",
+    spoolTitle: "New spool",
+    spoolFromPrints: "Colours from your prints",
+    spoolFromPrintsHint: "Materials and colours the Bambu cloud reported for your prints. Pick one, or choose another colour below.",
+    spoolNoColors: "No colours yet: they appear after the first prints are imported.",
+    spoolOwned: "spool exists",
+    spoolUsed: "{g} g in {n} prints",
+    spoolOther: "Another colour",
+    spoolMaterial: "Material",
+    spoolColor: "Colour",
+    spoolColorName: "Colour name",
+    spoolBrand: "Brand",
+    spoolWeight: "Spool weight, g",
+    spoolPrice: "Price",
+    spoolCreate: "Create spool",
+    spoolCreated: "Bambu: spool “{name}” created",
+    pickSpool: "Spool (optional)",
+    pickSpoolNone: "No open spools yet. Add one with “New spool”.",
+    cmdPickSpool: "Choose the spool for this print",
+    pickSpoolTitle: "Spool for this print",
+    spoolSet: "Bambu: spool “{name}” set",
+    notAPrint: "Bambu: open a print note first.",
+    btnNewSpool: "New spool",
     statsTotal: "Spent on printing",
     statsMonth: "This month",
     statsPrev: "Last month",
@@ -231,6 +253,28 @@ const STRINGS = {
     deductNone: "Bambu: списывать нечего",
     spoolMissing: "{note}: не найдена катушка «{spool}»",
     imported: "Импортировано из облака Bambu.",
+    spoolTitle: "Новая катушка",
+    spoolFromPrints: "Цвета из твоих печатей",
+    spoolFromPrintsHint: "Материалы и цвета, которые облако Bambu сообщило для твоих печатей. Выбери один или другой цвет ниже.",
+    spoolNoColors: "Цветов пока нет: они появятся после импорта первых печатей.",
+    spoolOwned: "катушка есть",
+    spoolUsed: "{g} г в {n} печ.",
+    spoolOther: "Другой цвет",
+    spoolMaterial: "Материал",
+    spoolColor: "Цвет",
+    spoolColorName: "Название цвета",
+    spoolBrand: "Бренд",
+    spoolWeight: "Вес катушки, г",
+    spoolPrice: "Цена",
+    spoolCreate: "Создать катушку",
+    spoolCreated: "Bambu: катушка «{name}» создана",
+    pickSpool: "Катушка (необязательно)",
+    pickSpoolNone: "Открытых катушек пока нет. Добавь кнопкой «Новая катушка».",
+    cmdPickSpool: "Выбрать катушку для этой печати",
+    pickSpoolTitle: "Катушка для этой печати",
+    spoolSet: "Bambu: катушка «{name}» выбрана",
+    notAPrint: "Bambu: сначала открой заметку печати.",
+    btnNewSpool: "Новая катушка",
     statsTotal: "Потрачено на печать",
     statsMonth: "В этом месяце",
     statsPrev: "В прошлом месяце",
@@ -667,6 +711,61 @@ const MODEL_SITES = [
   { site: "Cults3D", re: /^https?:\/\/(?:www\.)?cults3d\.com\/[a-z]{2}\/(?:3d-model|modele-3d|modelo-3d)\/[^/]+\/([^/?#]+)()/i },
 ];
 
+/** Material + colour pairs seen in imported prints ("PETG #000000 — 4.8 g"), most used first. */
+function cloudColors(prints) {
+  const map = new Map();
+  for (const fm of prints) {
+    if (!fm || fm.type !== "print") continue;
+    for (const line of [].concat(fm.filaments || [])) {
+      const m = String(line).match(/^(.*?)\s*#([0-9A-Fa-f]{6})\s*—\s*([\d.,]+)\s*g/);
+      if (!m) continue;
+      const material = m[1].trim() || "?";
+      const hex = m[2].toUpperCase();
+      const key = `${material}|${hex}`;
+      const e = map.get(key) || { material, hex, grams: 0, prints: 0 };
+      e.grams += num(m[3]);
+      e.prints++;
+      map.set(key, e);
+    }
+  }
+  return [...map.values()]
+    .map((e) => Object.assign(e, { grams: Math.round(e.grams) }))
+    .sort((a, b) => b.grams - a.grams || b.prints - a.prints);
+}
+
+/** Common filament materials for the spool window; materials from the cloud are added to these. */
+const MATERIALS = ["PLA", "PLA Matte", "PLA Silk", "PLA-CF", "PETG", "PETG HF", "PETG-CF", "ABS", "ASA", "TPU", "PA", "PA-CF", "PC", "PVA", "HIPS"];
+
+const COLOR_NAMES = [
+  ["000000", "Black", "Чёрный"], ["FFFFFF", "White", "Белый"], ["808080", "Grey", "Серый"],
+  ["C0C0C0", "Light grey", "Светло-серый"], ["4D4D4D", "Dark grey", "Тёмно-серый"],
+  ["E53935", "Red", "Красный"], ["8B0000", "Dark red", "Тёмно-красный"], ["FF8C00", "Orange", "Оранжевый"],
+  ["FFD600", "Yellow", "Жёлтый"], ["43A047", "Green", "Зелёный"], ["68724D", "Olive", "Оливковый"],
+  ["1E88E5", "Blue", "Синий"], ["0D2B6B", "Navy", "Тёмно-синий"], ["4FC3F7", "Light blue", "Голубой"],
+  ["8E24AA", "Purple", "Фиолетовый"], ["F48FB1", "Pink", "Розовый"], ["795548", "Brown", "Коричневый"],
+  ["E8D5B0", "Beige", "Бежевый"], ["B0B0B0", "Silver", "Серебристый"], ["D4AF37", "Gold", "Золотой"],
+];
+
+/** Nearest plain colour name for a hex value. */
+function colorName(hex, lang) {
+  const h = hex6(hex);
+  if (!/^[0-9A-F]{6}$/.test(h)) return "";
+  const rgb = (x) => [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16));
+  const [r, g, b] = rgb(h);
+  let best = null;
+  let bestD = Infinity;
+  for (const c of COLOR_NAMES) {
+    const [R, G, B] = rgb(c[0]);
+    // Weighted RGB distance: close enough to how people name colours.
+    const d = 2 * (r - R) ** 2 + 4 * (g - G) ** 2 + 3 * (b - B) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return lang === "ru" ? best[2] : best[1];
+}
+
 /**
  * Spending summary over finished and failed prints.
  * prints: frontmatter objects; now: Date. Months come from `printed` (YYYY-MM-DD), else `created`.
@@ -1081,6 +1180,19 @@ class BambuPrintSync extends Plugin {
       id: "toggle-primary",
       name: t("cmdPrimary"),
       callback: () => (this.isPrimary() ? this.releaseMain() : this.claimMain(true)),
+    });
+    this.addCommand({
+      id: "pick-spool",
+      name: t("cmdPickSpool"),
+      checkCallback: (checking) => {
+        const f = this.app.workspace.getActiveFile();
+        const ok = !!(f && this.isPrint(f));
+        if (!checking) {
+          if (ok) new SpoolPickModal(this.app, this, f).open();
+          else new Notice(t("notAPrint"));
+        }
+        return ok;
+      },
     });
     this.addCommand({ id: "create-dashboard", name: t("cmdDashboard"), callback: () => this.createDashboard(true) });
     this.addCommand({ id: "recalc-cost", name: t("cmdRecalc"), callback: () => this.recalcAll(true) });
@@ -1720,6 +1832,7 @@ class BambuPrintSync extends Plugin {
   /* ---------- notes and base ---------- */
 
   async newNote(kind) {
+    if (kind === "spool") return new SpoolModal(this.app, this).open();
     const st = this.settings;
     const folder = kind === "print" ? st.printsFolder : st.spoolsFolder;
     await this.ensureFolder(folder);
@@ -1731,6 +1844,48 @@ class BambuPrintSync extends Plugin {
     const body = kind === "print" ? `## ${t("notes")}\n` : spoolPrintsBlock(LANG);
     const file = await this.app.vault.create(path, ["---", ...fmLines, "---", "", body].join("\n"));
     await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  /** Create a spool note from the spool window. Returns the file. */
+  async createSpool(o) {
+    const st = this.settings;
+    await this.ensureFolder(st.spoolsFolder);
+    const today = localDate(new Date().toISOString());
+    const name = [o.material, o.colorName || colorName(o.hex, LANG)].filter(Boolean).join(" ") || t("newSpoolName");
+    const weight = num(o.weight) || 1000;
+    const lines = [
+      "---",
+      "type: spool",
+      `material: ${q(o.material || "PLA")}`,
+      `color: ${q(o.colorName || colorName(o.hex, LANG))}`,
+      `color_hex: ${q(hex6(o.hex))}`,
+      `brand: ${q(o.brand || "")}`,
+      `weight_g: ${weight}`,
+      `price: ${num(o.price) || ""}`,
+      `remaining_g: ${weight}`,
+      `spool_status: ${q(st.spoolOpen)}`,
+      `bought: ${today}`,
+      "tags:",
+      "  - 3d-spool",
+      "---",
+      "",
+      spoolPrintsBlock(LANG),
+    ];
+    const file = await this.app.vault.create(this.uniquePath(st.spoolsFolder, name), lines.join("\n"));
+    new Notice(t("spoolCreated", { name: file.basename }));
+    return file;
+  }
+
+  /** Spools that can still be used, for pickers. */
+  openSpools() {
+    return this.spoolList().filter((s) => s.status !== this.settings.spoolEmpty);
+  }
+
+  async setSpool(file, spoolName) {
+    await this.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.spool = spoolName ? `[[${spoolName}]]` : "";
+    });
+    if (spoolName) new Notice(t("spoolSet", { name: spoolName }));
   }
 
   /* ---------- model links ---------- */
@@ -1762,7 +1917,7 @@ class BambuPrintSync extends Plugin {
   }
 
   /** Create a planned print for a model link, or return the one already queued. */
-  async addModel(model) {
+  async addModel(model, spoolName) {
     try {
       const existing = this.findQueued(model);
       if (existing) {
@@ -1784,7 +1939,7 @@ class BambuPrintSync extends Plugin {
       if (model.profileId) lines.push(`makerworld_profile: ${q(model.profileId)}`);
       lines.push(
         `bambu_title: ${q(model.title)}`,
-        'spool: ""',
+        `spool: ${spoolName ? q(`[[${spoolName}]]`) : '""'}`,
         "grams:",
         "time_h:",
         "time_m:",
@@ -1901,6 +2056,7 @@ class BambuPrintSync extends Plugin {
     btn("＋", t("btnAddModel"), true, () => new AddLinkModal(this.app, this).open());
     btn("⟳", t("btnSync"), false, () => this.sync());
     btn("✎", t("btnNewPrint"), false, () => this.newNote("print"));
+    btn("◉", t("btnNewSpool"), false, () => this.newNote("spool"));
   }
 
   fillStats(box) {
@@ -2150,6 +2306,166 @@ class LoginModal extends Modal {
 /* add-by-link modal                                                   */
 /* ------------------------------------------------------------------ */
 
+/** A colour square; the colour is data, so it is passed as a CSS variable. */
+function swatch(parent, hex, cls) {
+  const sq = parent.createSpan({ cls: "bambu-swatch-color" + (cls ? " " + cls : "") });
+  const v = /^[0-9A-F]{6}$/.test(hex6(hex)) ? `#${hex6(hex)}` : "transparent";
+  if (sq.setCssProps) sq.setCssProps({ "--bambu-swatch": v });
+  return sq;
+}
+
+/** Selectable spool chips (colour + name). onPick receives the spool name or "". */
+function renderSpoolChips(parent, plugin, current, onPick) {
+  const wrap = parent.createDiv({ cls: "bambu-pick" });
+  wrap.createDiv({ cls: "setting-item-name", text: t("pickSpool") });
+  const spools = plugin.openSpools();
+  if (!spools.length) {
+    wrap.createDiv({ cls: "setting-item-description", text: t("pickSpoolNone") });
+    return wrap;
+  }
+  const row = wrap.createDiv({ cls: "bambu-chips" });
+  const chips = [];
+  let picked = current || "";
+  for (const sp of spools) {
+    const chip = row.createEl("button", { cls: "bambu-chip" });
+    swatch(chip, sp.colorHex);
+    chip.createSpan({ text: sp.name });
+    if (sp.name === picked) chip.addClass("is-active");
+    chip.addEventListener("click", (e) => {
+      e.preventDefault();
+      picked = picked === sp.name ? "" : sp.name;
+      for (const c of chips) c.el.toggleClass("is-active", c.name === picked);
+      onPick(picked);
+    });
+    chips.push({ el: chip, name: sp.name });
+  }
+  return wrap;
+}
+
+class SpoolPickModal extends Modal {
+  constructor(app, plugin, file) {
+    super(app);
+    this.plugin = plugin;
+    this.file = file;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    this.setTitle ? this.setTitle(t("pickSpoolTitle")) : contentEl.createEl("h3", { text: t("pickSpoolTitle") });
+    const current = linkTarget(this.plugin.fm(this.file).spool);
+    renderSpoolChips(contentEl, this.plugin, current, async (name) => {
+      await this.plugin.setSpool(this.file, name);
+      if (name) this.close();
+    });
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+class SpoolModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    this.v = { material: "PLA", hex: "000000", colorName: "", brand: "Bambu Lab", weight: 1000, price: "" };
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    const v = this.v;
+    this.setTitle ? this.setTitle(t("spoolTitle")) : contentEl.createEl("h3", { text: t("spoolTitle") });
+
+    const st = this.plugin.settings;
+    const prints = this.plugin.filesIn(st.printsFolder).map((f) => this.plugin.fm(f));
+    const colors = cloudColors(prints);
+    const owned = this.plugin.openSpools();
+    const first = (x) => String(x || "").toLowerCase().split(/\s+/)[0];
+
+    new Setting(contentEl)
+      .setName(t("spoolFromPrints"))
+      .setDesc(colors.length ? t("spoolFromPrintsHint") : t("spoolNoColors"))
+      .setHeading();
+    const grid = contentEl.createDiv({ cls: "bambu-swatches" });
+    const tiles = [];
+
+    // Inputs that a tile fills in.
+    let materialInput;
+    let colorInput;
+    let nameInput;
+    const fill = () => {
+      if (materialInput) materialInput.setValue(v.material);
+      if (colorInput) colorInput.setValue(`#${v.hex}`);
+      if (nameInput) nameInput.setValue(v.colorName);
+    };
+
+    for (const c of colors) {
+      const tile = grid.createEl("button", { cls: "bambu-swatch" });
+      swatch(tile, c.hex, "is-large");
+      const info = tile.createDiv({ cls: "bambu-swatch-info" });
+      info.createDiv({ cls: "bambu-swatch-title", text: `${c.material} · ${colorName(c.hex, LANG)}` });
+      const has = owned.some((s) => first(s.material) === first(c.material) && s.colorHex === c.hex);
+      info.createDiv({ cls: "bambu-swatch-sub", text: has ? t("spoolOwned") : t("spoolUsed", { g: c.grams, n: c.prints }) });
+      tile.addEventListener("click", (e) => {
+        e.preventDefault();
+        Object.assign(v, { material: c.material, hex: c.hex, colorName: colorName(c.hex, LANG) });
+        for (const x of tiles) x.toggleClass("is-active", x === tile);
+        fill();
+      });
+      tiles.push(tile);
+    }
+
+    new Setting(contentEl).setName(t("spoolOther")).setHeading();
+    const materials = [...new Set([...colors.map((c) => c.material), ...MATERIALS])].filter((m) => m && m !== "?");
+    new Setting(contentEl).setName(t("spoolMaterial")).addDropdown((d) => {
+      for (const m of materials) d.addOption(m, m);
+      // A tile may bring a material that is not listed yet.
+      const setValue = d.setValue.bind(d);
+      d.setValue = (x) => {
+        if (x && !materials.includes(x)) {
+          materials.push(x);
+          d.addOption(x, x);
+        }
+        return setValue(x);
+      };
+      materialInput = d;
+      if (colors[0]) v.material = colors[0].material;
+      d.setValue(v.material).onChange((x) => (v.material = x));
+    });
+    new Setting(contentEl).setName(t("spoolColor")).addColorPicker((c) => {
+      colorInput = c;
+      c.setValue(`#${v.hex}`).onChange((x) => {
+        v.hex = hex6(x);
+        v.colorName = colorName(v.hex, LANG);
+        if (nameInput) nameInput.setValue(v.colorName);
+        for (const tl of tiles) tl.removeClass("is-active");
+      });
+    });
+    new Setting(contentEl).setName(t("spoolColorName")).addText((c) => {
+      nameInput = c;
+      v.colorName = colorName(v.hex, LANG);
+      c.setValue(v.colorName).onChange((x) => (v.colorName = x.trim()));
+    });
+    new Setting(contentEl).setName(t("spoolBrand")).addText((c) => c.setValue(v.brand).onChange((x) => (v.brand = x.trim())));
+    new Setting(contentEl).setName(t("spoolWeight")).addText((c) => c.setValue(String(v.weight)).onChange((x) => (v.weight = x)));
+    new Setting(contentEl)
+      .setName(t("spoolPrice"))
+      .setDesc(st.currency || "")
+      .addText((c) => c.setPlaceholder("1990").onChange((x) => (v.price = x)));
+    new Setting(contentEl).addButton((b) =>
+      b.setCta().setButtonText(t("spoolCreate")).onClick(async () => {
+        const file = await this.plugin.createSpool(v);
+        this.close();
+        if (file) await this.app.workspace.getLeaf(false).openFile(file);
+      })
+    );
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class TakeoverModal extends Modal {
   constructor(app, other, done) {
     super(app);
@@ -2230,7 +2546,7 @@ class AddLinkModal extends Modal {
         msg.addClass("mod-warning");
         return;
       }
-      const file = await this.plugin.addModel(model);
+      const file = await this.plugin.addModel(model, this.spool);
       if (file) this.close();
     };
     new Setting(contentEl).addText((c) => {
@@ -2241,6 +2557,7 @@ class AddLinkModal extends Modal {
       });
       window.setTimeout(() => c.inputEl.focus(), 0);
     });
+    renderSpoolChips(contentEl, this.plugin, "", (name) => (this.spool = name));
     new Setting(contentEl).addButton((b) => b.setCta().setButtonText(t("add")).onClick(submit));
   }
 
@@ -2443,4 +2760,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };

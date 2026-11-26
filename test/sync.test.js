@@ -370,6 +370,39 @@ fixture = {
   assert.equal(r.time_h, 1, "a finished job without an end time still uses the estimate");
   assert.equal(r.gramsEstimated, false);
 
+  /* ---------- spool colours ---------- */
+  const { cloudColors, colorName } = Plugin._test;
+  const cc = cloudColors([
+    { type: "print", filaments: ["PETG #000000 — 170.8 g", "PETG #FFFFFF — 2,2 g"] },
+    { type: "print", filaments: ["PETG #000000 — 4.8 g"] },
+    { type: "print", filaments: "PLA #68724d — 10 g" },
+    { type: "spool", filaments: ["PLA #FF0000 — 999 g"] },
+    { type: "print", filaments: ["garbage"] },
+  ]);
+  assert.deepEqual(cc.map((c) => `${c.material} ${c.hex} ${c.grams} ${c.prints}`), ["PETG 000000 176 2", "PLA 68724D 10 1", "PETG FFFFFF 2 1"], "most used first");
+  assert.equal(colorName("000000", "ru"), "Чёрный");
+  assert.equal(colorName("FFFFFF", "en"), "White");
+  assert.equal(colorName("68724D", "ru"), "Оливковый");
+  assert.equal(colorName("898989", "ru"), "Серый");
+  assert.equal(colorName("9B9EA0", "en"), "Silver");
+  assert.equal(colorName("nope", "en"), "");
+
+  const sp = await plugin.createSpool({ material: "PETG", hex: "68724d", brand: "Bambu Lab", weight: "1000", price: "1590" });
+  const spFm = files.get(sp.path).fm;
+  assert.equal(sp.basename, "PETG Olive", "named after material and colour");
+  assert.equal(spFm.material, "PETG");
+  assert.equal(spFm.color_hex, "68724D");
+  assert.equal(spFm.price, "1590");
+  assert.equal(spFm.remaining_g, "1000");
+  assert.ok(plugin.openSpools().some((x) => x.name === "PETG Olive"), "new spool can be picked");
+
+  const vase = await plugin.addModel(parseModelUrl("https://makerworld.com/en/models/424242-olive-vase"), "PETG Olive");
+  assert.equal(files.get(vase.path).fm.spool, "[[PETG Olive]]", "spool chosen while planning");
+  await plugin.setSpool(vase, "");
+  assert.equal(files.get(vase.path).fm.spool, "");
+  await plugin.setSpool(vase, "PETG Olive");
+  assert.equal(files.get(vase.path).fm.spool, "[[PETG Olive]]");
+
   /* ---------- spending ---------- */
   const { printStats } = Plugin._test;
   const nowD = new Date(2026, 10, 27);
