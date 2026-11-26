@@ -157,7 +157,7 @@ The plugin writes `cost_filament`, `cost_power`, `cost_wear` and `cost` into a p
 
 ### Queue from a link
 
-Click **Add model** on the print dashboard (or the ➕ ribbon icon, or the *Add model to queue by link* command) and paste the link. If a model link is already on the clipboard, it is filled in for you. The plugin recognises MakerWorld, Printables, Thingiverse and Cults3D pages, takes the model name from the URL (or from the page, if the link has none, like `/models/12703`) and creates a planned print with the link. Adding the same model again does not create a second card while the first is still queued.
+Click **Add model** on the print dashboard (or the ➕ ribbon icon, or the *Add model to queue by link* command) and paste the link. The plugin recognises MakerWorld, Printables, Thingiverse and Cults3D pages, takes the model name from the URL (or from the page, if the link has none, like `/models/12703`) and creates a planned print with the link. Adding the same model again does not create a second card while the first is still queued.
 
 You can put the buttons into any note yourself:
 

@@ -16,6 +16,9 @@ class TFile {
     this.path = p;
     this.basename = p.split("/").pop().replace(/\.md$/, "");
   }
+  get extension() {
+    return this.path.split(".").pop();
+  }
 }
 
 const fakeObsidian = {
@@ -81,8 +84,10 @@ const app = {
   loadLocalStorage: (k) => (k in local ? local[k] : null),
   saveLocalStorage: (k, v) => { local[k] = v; },
   vault: {
-    getMarkdownFiles: () => [...files.values()].map((x) => x.file),
-    getAbstractFileByPath: (p) => (files.get(p) ? files.get(p).file : isFolder(p) ? {} : null),
+    getMarkdownFiles: () => { throw new Error("plugin must not list the whole vault"); },
+    getFiles: () => { throw new Error("plugin must not list the whole vault"); },
+    getAbstractFileByPath: (p) =>
+      files.get(p) ? files.get(p).file : isFolder(p) ? { children: [...files.keys()].filter((k) => k.startsWith(p + "/")).map((k) => files.get(k).file) } : null,
     createFolder: async () => {},
     createBinary: async (p, data) => {
       const file = add(p, {});

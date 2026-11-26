@@ -1066,9 +1066,18 @@ class BambuPrintSync extends Plugin {
 
   /* ---------- vault helpers ---------- */
 
-  filesIn(folder) {
-    const prefix = normalizePath(folder) + "/";
-    return this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(prefix));
+  /** Files inside one folder (and its subfolders) only, without listing the whole vault. */
+  filesIn(folder, ext = "md") {
+    const out = [];
+    const walk = (f) => {
+      if (f instanceof TFile) {
+        if (f.extension === ext) out.push(f);
+      } else if (f && Array.isArray(f.children)) {
+        f.children.forEach(walk);
+      }
+    };
+    walk(this.app.vault.getAbstractFileByPath(normalizePath(folder)));
+    return out;
   }
 
   fm(file) {
@@ -1568,7 +1577,7 @@ class BambuPrintSync extends Plugin {
     if (this.settings.onboarded) return;
     const root = this.rootFolder();
     const exists = this.app.vault.getAbstractFileByPath(normalizePath(this.settings.printsFolder)) ||
-      this.app.vault.getFiles().some((f) => f.extension === "base" && f.path.startsWith(root + "/"));
+      this.filesIn(root, "base").length > 0;
     this.settings.onboarded = true;
     await this.saveSettings();
     if (!exists) new WelcomeModal(this.app, this).open();
@@ -1866,20 +1875,6 @@ class AddLinkModal extends Modal {
         if (e.key === "Enter") submit();
       });
       window.setTimeout(() => c.inputEl.focus(), 0);
-      // Prefill with a model link already on the clipboard.
-      try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          navigator.clipboard.readText().then((clip) => {
-            clip = String(clip || "").trim();
-            if (!url && parseModelUrl(clip)) {
-              c.setValue(clip);
-              url = clip;
-            }
-          }, () => {});
-        }
-      } catch (e) {
-        /* no clipboard access */
-      }
     });
     new Setting(contentEl).addButton((b) => b.setCta().setButtonText(t("add")).onClick(submit));
   }
