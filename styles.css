@@ -2,9 +2,48 @@
 
 /* Button row from a ```bambu-print-sync``` block, above the embedded tracker. */
 .bambu-buttons {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+/* Equal tiles: icon above a short label. */
+.bambu-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-4-1);
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--input-height) * 1.5);
+  padding: var(--size-4-2);
+  font-size: var(--font-ui-small);
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+  border-radius: var(--radius-l);
+}
+
+/* The main action spans the row, icon and label side by side. */
+.bambu-button.mod-cta {
+  grid-column: 1 / -1;
+  border-radius: var(--radius-l);
+  flex-direction: row;
+  gap: var(--size-4-2);
+  min-height: var(--input-height);
+  font-size: var(--font-ui-medium);
+}
+
+.bambu-button-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.bambu-button-icon svg {
+  width: var(--icon-m);
+  height: var(--icon-m);
 }
 
 /* Link field in the "Add a model to the queue" window. */

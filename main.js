@@ -10,7 +10,7 @@
 "use strict";
 
 const obsidian = require("obsidian");
-const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath, moment, Platform } = obsidian;
+const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath, moment, Platform, setIcon } = obsidian;
 
 const SUPPORT_URL = "https://boosty.to/grispy/donate";
 const PRIMARY_KEY = "bambu-print-sync-primary";
@@ -172,7 +172,7 @@ const STRINGS = {
     cmdAddLink: "Add model to queue by link",
     addLinkTitle: "Add a model to the queue",
     btnAddModel: "Add model",
-    btnSync: "Sync",
+    btnSync: "Refresh",
     btnNewPrint: "Empty card",
     cmdDashboard: "Create print dashboard (buttons + tracker)",
     dashboardName: "Print dashboard",
@@ -367,7 +367,7 @@ const STRINGS = {
     cmdAddLink: "Добавить модель в очередь по ссылке",
     addLinkTitle: "Добавить модель в очередь",
     btnAddModel: "Добавить модель",
-    btnSync: "Синхронизировать",
+    btnSync: "Обновить",
     btnNewPrint: "Пустая карточка",
     cmdDashboard: "Создать панель печати (кнопки + таблица)",
     dashboardName: "Панель печати",
@@ -2046,17 +2046,19 @@ class BambuPrintSync extends Plugin {
     this.fillStats(stats);
     const bar = el.createDiv({ cls: "bambu-buttons" });
     const btn = (icon, label, cta, fn) => {
-      const b = bar.createEl("button", { text: `${icon} ${label}` });
-      if (cta) b.addClass("mod-cta");
+      const b = bar.createEl("button", { cls: "bambu-button" + (cta ? " mod-cta" : "") });
+      const ic = b.createSpan({ cls: "bambu-button-icon" });
+      if (setIcon) setIcon(ic, icon);
+      b.createSpan({ cls: "bambu-button-label", text: label });
       b.addEventListener("click", (e) => {
         e.preventDefault();
         fn();
       });
     };
-    btn("＋", t("btnAddModel"), true, () => new AddLinkModal(this.app, this).open());
-    btn("⟳", t("btnSync"), false, () => this.sync());
-    btn("✎", t("btnNewPrint"), false, () => this.newNote("print"));
-    btn("◉", t("btnNewSpool"), false, () => this.newNote("spool"));
+    btn("plus", t("btnAddModel"), true, () => new AddLinkModal(this.app, this).open());
+    btn("refresh-cw", t("btnSync"), false, () => this.sync());
+    btn("file-plus", t("btnNewPrint"), false, () => this.newNote("print"));
+    btn("disc-3", t("btnNewSpool"), false, () => this.newNote("spool"));
   }
 
   fillStats(box) {
@@ -2097,7 +2099,19 @@ class BambuPrintSync extends Plugin {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       const baseName = basePath.split("/").pop();
-      file = await this.app.vault.create(path, "```bambu-print-sync\n```\n\n![[" + baseName + "]]\n");
+      const spoolsView = LANG === "ru" ? "Катушки" : "Spools";
+      const body = [
+        "```bambu-print-sync",
+        "```",
+        "",
+        `![[${baseName}]]`,
+        "",
+        `## ${spoolsView}`,
+        "",
+        `![[${baseName}#${spoolsView}]]`,
+        "",
+      ].join("\n");
+      file = await this.app.vault.create(path, body);
       new Notice(t("dashboardCreated", { path }));
     }
     if (open && file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);

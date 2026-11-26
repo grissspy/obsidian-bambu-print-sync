@@ -259,6 +259,7 @@ fixture = {
   assert.ok(files.get(dash).text.includes("```bambu-print-sync") && files.get(dash).text.includes(".base]]"), "queue note has buttons and the base");
   assert.equal(await plugin.createDashboard(false), dash);
   assert.ok(files.get(dash).text.includes("![[3D printing.base]]"), "dashboard embeds the existing base");
+  assert.ok(files.get(dash).text.includes("![[3D printing.base#Spools]]"), "dashboard shows the spool list");
   assert.ok(!files.has("3D/Print tracker.base"), "no second base");
   assert.equal(plugin.settings.pasteToQueue, false, "paste-to-queue is off by default");
 
