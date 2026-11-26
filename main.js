@@ -14,6 +14,11 @@ const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, nor
 
 const SUPPORT_URL = "https://boosty.to/grispy/donate";
 const PRIMARY_KEY = "bambu-print-sync-primary";
+const DEVICE_ID_KEY = "bambu-print-sync-device-id";
+const DEVICE_NAME_KEY = "bambu-print-sync-device-name";
+const WARNED_KEY = "bambu-print-sync-warned";
+const STALE_MS = 2 * 24 * 3600 * 1000; // main device silent this long → warn
+const RECENT_MS = 24 * 3600 * 1000; // another main synced this recently → ask before taking over
 
 /* ------------------------------------------------------------------ */
 /* i18n                                                                */
@@ -53,6 +58,31 @@ const STRINGS = {
     deductNone: "Bambu: nothing to deduct",
     spoolMissing: "{note}: spool “{spool}” not found",
     imported: "Imported from the Bambu cloud.",
+    statsTotal: "Spent on printing",
+    statsMonth: "This month",
+    statsPrev: "Last month",
+    statsFailed: "Lost to failures",
+    statsPrints: "{n} prints · {kg} kg · {h} h",
+    statsFailedSub: "{n} failed prints",
+    statsNoPrices: "Cost is not counted yet: set the electricity price, printer price or spool prices in the plugin settings.",
+    devicesFolder: "Devices",
+    deviceNote: "Bambu Print Sync service note: which device imports prints. Each device updates only its own note; do not edit by hand.",
+    deviceName: "Name of this device",
+    deviceNameDesc: "Shown to your other devices, e.g. in “The main device is now …”.",
+    mainIs: "The main device is now: {name} · last sync {when}",
+    mainIsThis: "The main device is this one · last sync {when}",
+    mainNone: "No device is the main one: prints are not imported.",
+    never: "never",
+    takeoverTitle: "Make this device the main one?",
+    takeoverText: "“{name}” is the main device now (last sync {when}). Only one device should import prints. If you continue, “{name}” stops being the main device the next time it opens Obsidian.",
+    takeoverYes: "Make this the main device",
+    cancel: "Cancel",
+    yielded: "Bambu: “{name}” became the main device, so this device is now secondary.",
+    warnNoMain: "Bambu: prints are not being imported: no device is the main one.",
+    warnStale: "Bambu: the main device “{name}” has not synced since {when}. Open Obsidian there, or make this device the main one.",
+    warnNoLogin: "Bambu: this is the main device, but you are not logged in to Bambu Lab, so prints are not imported.",
+    makeMainBtn: "Make this the main device",
+    openSettingsBtn: "Open settings",
     imagesFolder: "Images",
     images: "Model images",
     imagesDesc: "Save a picture of each model next to the notes: from the model page when you add a link, and the plate preview from the Bambu cloud after printing. Shown on the queue cards.",
@@ -146,7 +176,7 @@ const STRINGS = {
     cmdPrimary: "Make this device the main one (on/off)",
     nowPrimary: "Bambu: this device is now the main one.",
     nowSecondary: "Bambu: this device is now secondary.",
-    primaryDesc: "Only one device should import from the Bambu cloud, deduct filament and write costs. If you sync your vault (Obsidian Sync, Seafile, iCloud, Syncthing…), turn this on on one computer and off everywhere else, or both will create the same prints and fight over edits. Stored on this device only.",
+    primaryDesc: "One device imports from the Bambu cloud, deducts filament and writes costs. Turning this on while another device is the main one asks first, and the other device then steps down by itself. Stored on this device only.",
     startDelay: "Wait after start, seconds",
     startDelayDesc: "Gives your vault sync time to download notes from other devices before the first Bambu sync, so no duplicates are created.",
     dupRemoved: "duplicates moved to trash: {n}",
@@ -201,6 +231,31 @@ const STRINGS = {
     deductNone: "Bambu: списывать нечего",
     spoolMissing: "{note}: не найдена катушка «{spool}»",
     imported: "Импортировано из облака Bambu.",
+    statsTotal: "Потрачено на печать",
+    statsMonth: "В этом месяце",
+    statsPrev: "В прошлом месяце",
+    statsFailed: "Ушло на провалы",
+    statsPrints: "{n} печатей · {kg} кг · {h} ч",
+    statsFailedSub: "провалов: {n}",
+    statsNoPrices: "Стоимость пока не считается: укажи цену электричества, принтера или катушек в настройках плагина.",
+    devicesFolder: "Устройства",
+    deviceNote: "Служебная заметка Bambu Print Sync: какое устройство импортирует печати. Каждое устройство обновляет только свою заметку, руками не правь.",
+    deviceName: "Название этого устройства",
+    deviceNameDesc: "Видно на других устройствах, например в «Основное сейчас: …».",
+    mainIs: "Основное сейчас: {name} · синхронизация {when}",
+    mainIsThis: "Основное — это устройство · синхронизация {when}",
+    mainNone: "Основного устройства нет: печати не импортируются.",
+    never: "ещё не было",
+    takeoverTitle: "Сделать это устройство основным?",
+    takeoverText: "Сейчас основное — «{name}» (синхронизация {when}). Импортировать печати должно одно устройство. Если продолжить, «{name}» перестанет быть основным, когда в следующий раз откроет Obsidian.",
+    takeoverYes: "Сделать основным",
+    cancel: "Отмена",
+    yielded: "Bambu: основным стало «{name}», это устройство теперь не основное.",
+    warnNoMain: "Bambu: печати не импортируются: основного устройства нет.",
+    warnStale: "Bambu: основное устройство «{name}» не синхронизировалось с {when}. Открой Obsidian на нём или сделай основным это устройство.",
+    warnNoLogin: "Bambu: это основное устройство, но вход в Bambu Lab не выполнен, поэтому печати не импортируются.",
+    makeMainBtn: "Сделать основным",
+    openSettingsBtn: "Открыть настройки",
     imagesFolder: "Картинки",
     images: "Картинки моделей",
     imagesDesc: "Сохранять картинку каждой модели рядом с заметками: со страницы модели при добавлении ссылки и превью пластины из облака Bambu после печати. Показываются на карточках очереди.",
@@ -294,7 +349,7 @@ const STRINGS = {
     cmdPrimary: "Сделать это устройство основным (вкл/выкл)",
     nowPrimary: "Bambu: это устройство теперь основное.",
     nowSecondary: "Bambu: это устройство теперь не основное.",
-    primaryDesc: "Импорт из облака Bambu, списание пластика и расчёт стоимости должно делать одно устройство. Если хранилище синхронизируется (Obsidian Sync, Seafile, iCloud, Syncthing…), включи это на одном компьютере и выключи на остальных, иначе они создадут одни и те же печати и будут перезаписывать правки друг друга. Хранится только на этом устройстве.",
+    primaryDesc: "Импорт из облака Bambu, списание пластика и расчёт стоимости делает одно устройство. Если включить это здесь, пока основным работает другое, плагин сначала спросит, а другое устройство само станет неосновным. Хранится только на этом устройстве.",
     startDelay: "Ждать после запуска, секунд",
     startDelayDesc: "Даёт синхронизации хранилища время скачать заметки с других устройств до первой синхронизации с Bambu, чтобы не появились дубли.",
     dupRemoved: "дублей убрано в корзину: {n}",
@@ -607,6 +662,69 @@ const MODEL_SITES = [
   { site: "Thingiverse", re: /^https?:\/\/(?:www\.)?thingiverse\.com\/thing:(\d+)()/i },
   { site: "Cults3D", re: /^https?:\/\/(?:www\.)?cults3d\.com\/[a-z]{2}\/(?:3d-model|modele-3d|modelo-3d)\/[^/]+\/([^/?#]+)()/i },
 ];
+
+/**
+ * Spending summary over finished and failed prints.
+ * prints: frontmatter objects; now: Date. Months come from `printed` (YYYY-MM-DD), else `created`.
+ */
+function printStats(prints, st, now) {
+  st = st || LOCALE_DEFAULTS.en;
+  now = now || new Date();
+  const ym = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  const thisMonth = ym(now);
+  const prevMonth = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const blank = () => ({ cost: 0, grams: 0, hours: 0, count: 0 });
+  const out = { total: blank(), month: blank(), prev: blank(), failed: blank(), priced: 0 };
+  for (const fm of prints) {
+    if (!fm || fm.type !== "print") continue;
+    const done = fm.status === st.statusDone;
+    const failed = fm.status === st.statusFailed;
+    if (!done && !failed) continue;
+    const cost = num(fm.cost);
+    if (cost > 0) out.priced++;
+    const add = (b) => {
+      b.cost += cost;
+      b.grams += num(fm.grams);
+      b.hours += num(fm.time_h) + num(fm.time_m) / 60;
+      b.count++;
+    };
+    add(out.total);
+    if (failed) add(out.failed);
+    const when = String(fm.printed || fm.created || "").slice(0, 7);
+    if (when === thisMonth) add(out.month);
+    if (when === prevMonth) add(out.prev);
+  }
+  for (const b of [out.total, out.month, out.prev, out.failed]) {
+    b.cost = round2(b.cost);
+    b.grams = Math.round(b.grams);
+    b.hours = Math.round(b.hours * 10) / 10;
+  }
+  return out;
+}
+
+/** 1234.5 → "1 234,50 ₽" in Russian, "$1,234.50"-style digits otherwise. */
+function money(x, st) {
+  const cur = (st && st.currency) || "";
+  const n = Number(x || 0).toLocaleString(LANG === "ru" ? "ru-RU" : "en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return cur ? `${n} ${cur}` : n;
+}
+
+/**
+ * Which device is the main one, from the per-device notes.
+ * devices: [{ id, name, main, since, lastSync }] (times in ms). The latest claim wins.
+ */
+function mainDevice(devices) {
+  const mains = devices.filter((d) => d.main);
+  mains.sort((a, b) => (b.since || 0) - (a.since || 0));
+  return mains[0] || null;
+}
+
+/** Should this device stop being the main one? True when another device claimed it later. */
+function shouldYield(devices, myId) {
+  const me = devices.find((d) => d.id === myId);
+  const winner = mainDevice(devices);
+  return !!(winner && winner.id !== myId && (!me || !me.main || (winner.since || 0) > (me.since || 0)));
+}
 
 /** The preview picture a page advertises for link previews (og:image / twitter:image). */
 function pageImage(html, pageUrl) {
@@ -958,12 +1076,7 @@ class BambuPrintSync extends Plugin {
     this.addCommand({
       id: "toggle-primary",
       name: t("cmdPrimary"),
-      callback: () => {
-        const on = !this.isPrimary();
-        this.setPrimary(on);
-        new Notice(on ? t("nowPrimary") : t("nowSecondary"));
-        if (on && this.settings.token) this.sync(true);
-      },
+      callback: () => (this.isPrimary() ? this.releaseMain() : this.claimMain(true)),
     });
     this.addCommand({ id: "create-dashboard", name: t("cmdDashboard"), callback: () => this.createDashboard(true) });
     this.addCommand({ id: "recalc-cost", name: t("cmdRecalc"), callback: () => this.recalcAll(true) });
@@ -981,7 +1094,12 @@ class BambuPrintSync extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.maybeOnboard();
       // Let a vault sync plugin pull notes from other devices first.
-      this.startTimer = window.setTimeout(() => {
+      this.startTimer = window.setTimeout(async () => {
+        try {
+          await this.checkDevices();
+        } catch (e) {
+          console.error("[bambu-print-sync] devices", e);
+        }
         if (this.settings.syncOnStart && this.settings.token && this.isPrimary()) this.sync(true);
       }, Math.max(0, num(this.settings.startDelaySec)) * 1000);
     });
@@ -1186,11 +1304,179 @@ class BambuPrintSync extends Plugin {
   }
 
   setPrimary(on) {
+    this.local(PRIMARY_KEY, on ? "1" : "0");
+  }
+
+  /** Read (one argument) or write a value kept on this device only. */
+  local(key, value) {
     try {
-      if (this.app.saveLocalStorage) this.app.saveLocalStorage(PRIMARY_KEY, on ? "1" : "0");
+      if (value === undefined) return this.app.loadLocalStorage ? this.app.loadLocalStorage(key) : null;
+      if (this.app.saveLocalStorage) this.app.saveLocalStorage(key, value);
     } catch (e) {
-      /* ignore */
+      /* no local storage */
     }
+    return value;
+  }
+
+  /* ---------- devices: one service note per device, so the vault sync never has to merge them ---------- */
+
+  deviceId() {
+    let id = this.local(DEVICE_ID_KEY);
+    if (!id) id = this.local(DEVICE_ID_KEY, Math.random().toString(16).slice(2, 10));
+    return String(id);
+  }
+
+  deviceName() {
+    const saved = this.local(DEVICE_NAME_KEY);
+    if (saved) return String(saved);
+    const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+    const android = ua.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/);
+    if (android && android[1] && !/^(K|wv)$/.test(android[1].trim())) return android[1].trim();
+    if (/iPad/.test(ua)) return "iPad";
+    if (/iPhone/.test(ua)) return "iPhone";
+    if (Platform && Platform.isMacOS) return "Mac";
+    if (Platform && Platform.isWin) return "Windows";
+    if (Platform && Platform.isLinux) return "Linux";
+    return `${Platform && Platform.isMobile ? "Phone" : "Computer"} ${this.deviceId().slice(0, 4)}`;
+  }
+
+  devicesFolder() {
+    return normalizePath(`${this.rootFolder()}/${t("devicesFolder")}`);
+  }
+
+  readDevices() {
+    const ms = (v) => {
+      const x = Date.parse(v || "");
+      return isNaN(x) ? 0 : x;
+    };
+    return this.filesIn(this.devicesFolder())
+      .map((file) => ({ file, fm: this.fm(file) }))
+      .filter((d) => d.fm.type === "bambu-device" && d.fm.device_id)
+      .map((d) => ({
+        file: d.file,
+        id: String(d.fm.device_id),
+        name: String(d.fm.device || d.file.basename),
+        main: d.fm.main === true || d.fm.main === "true",
+        since: ms(d.fm.main_since),
+        lastSync: ms(d.fm.last_sync),
+      }));
+  }
+
+  /** Create or update this device's own note. Only fields that change are written. */
+  async writeDevice(patch) {
+    const id = this.deviceId();
+    const mine = this.readDevices().find((d) => d.id === id);
+    let file = mine && mine.file;
+    if (!file) {
+      await this.ensureFolder(this.devicesFolder());
+      const body = ["---", "type: bambu-device", `device_id: ${q(id)}`, "---", t("deviceNote"), ""].join("\n");
+      file = await this.app.vault.create(this.uniquePath(this.devicesFolder(), this.deviceName()), body);
+    }
+    const want = Object.assign({ device: this.deviceName(), plugin_version: this.manifest ? this.manifest.version : "" }, patch);
+    const fm = this.fm(file);
+    if (Object.keys(want).every((k) => fm[k] === want[k])) return file;
+    await this.app.fileManager.processFrontMatter(file, (f) => Object.assign(f, want));
+    return file;
+  }
+
+  /** Turn the main-device switch on here, asking first if another device is actively the main one. */
+  async claimMain(ask = true) {
+    const other = mainDevice(this.readDevices().filter((d) => d.id !== this.deviceId()));
+    if (ask && other && Date.now() - Math.max(other.lastSync, other.since) < RECENT_MS) {
+      const ok = await new Promise((resolve) => new TakeoverModal(this.app, other, resolve).open());
+      if (!ok) return false;
+    }
+    this.setPrimary(true);
+    await this.writeDevice({ main: true, main_since: new Date().toISOString() });
+    new Notice(t("nowPrimary"));
+    this.refreshSettings();
+    if (this.settings.token) this.sync(true);
+    return true;
+  }
+
+  async releaseMain() {
+    this.setPrimary(false);
+    if (this.readDevices().some((d) => d.id === this.deviceId())) await this.writeDevice({ main: false });
+    new Notice(t("nowSecondary"));
+    this.refreshSettings();
+  }
+
+  /** Before importing: step down if another device took over since. Returns false when this device yields. */
+  async confirmStillMain() {
+    const devices = this.readDevices();
+    const id = this.deviceId();
+    if (shouldYield(devices, id)) {
+      const winner = mainDevice(devices);
+      this.setPrimary(false);
+      await this.writeDevice({ main: false });
+      new Notice(t("yielded", { name: winner.name }), 15000);
+      this.refreshSettings();
+      return false;
+    }
+    const me = devices.find((d) => d.id === id);
+    if (!me || !me.main) await this.writeDevice({ main: true, main_since: new Date().toISOString() });
+    return true;
+  }
+
+  /** After start: keep this device's note current and warn if nobody imports prints. */
+  async checkDevices() {
+    const devices = this.readDevices();
+    const id = this.deviceId();
+    const me = devices.find((d) => d.id === id);
+    const main = this.isPrimary();
+    // Only take part once the tracker is in use: a device that imports, or a vault that already has device notes.
+    if (!devices.length && !(main && this.settings.token)) return;
+    if (main && shouldYield(devices, id)) return this.confirmStillMain();
+    if (!me || me.main !== main) await this.writeDevice(main ? { main: true, main_since: new Date().toISOString() } : { main: false });
+
+    const lastWarn = Number(this.local(WARNED_KEY)) || 0;
+    if (Date.now() - lastWarn < RECENT_MS) return;
+    let msg = "";
+    let offer = false;
+    if (main && !this.settings.token) msg = t("warnNoLogin");
+    else if (!main) {
+      const winner = mainDevice(devices.filter((d) => d.id !== id));
+      if (!winner) {
+        msg = t("warnNoMain");
+        offer = true;
+      } else if (Date.now() - Math.max(winner.lastSync, winner.since) > STALE_MS) {
+        msg = t("warnStale", { name: winner.name, when: this.when(Math.max(winner.lastSync, winner.since)) });
+        offer = true;
+      }
+    }
+    if (!msg) return;
+    this.local(WARNED_KEY, String(Date.now()));
+    this.warn(msg, offer);
+  }
+
+  warn(msg, offerMain) {
+    const frag = document.createDocumentFragment();
+    frag.createDiv({ text: msg });
+    const row = frag.createDiv({ cls: "bambu-notice-actions" });
+    const notice = new Notice(frag, 0);
+    const button = (text, fn) => {
+      const b = row.createEl("button", { text });
+      b.addEventListener("click", () => {
+        if (notice.hide) notice.hide();
+        fn();
+      });
+    };
+    if (offerMain) button(t("makeMainBtn"), () => this.claimMain(true));
+    button(t("openSettingsBtn"), () => this.openSettings());
+  }
+
+  openSettings() {
+    const s = this.app.setting;
+    if (s && s.open) {
+      s.open();
+      if (s.openTabById) s.openTabById(this.manifest.id);
+    }
+  }
+
+  when(ms) {
+    if (!ms) return t("never");
+    const d = new Date(ms);
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   async sync(quiet = false) {
@@ -1203,6 +1489,14 @@ class BambuPrintSync extends Plugin {
       new Notice(t("needLogin"));
       return;
     }
+    // Another device may have become the main one since: then step down instead of importing.
+    let stillMain = true;
+    try {
+      stillMain = await this.confirmStillMain();
+    } catch (e) {
+      console.error("[bambu-print-sync] devices", e);
+    }
+    if (!stillMain || this.syncing) return;
     this.syncing = true;
     if (this.statusEl) this.statusEl.setText(t("sbSyncing"));
     const st = this.settings;
@@ -1299,6 +1593,7 @@ class BambuPrintSync extends Plugin {
 
       st.lastSync = Date.now();
       await this.saveSettings();
+      await this.writeDevice({ main: true, last_sync: new Date(st.lastSync).toISOString() });
       this.refreshSettings();
 
       const deducted = st.autoDeduct ? await this.deductAll(false) : 0;
@@ -1531,6 +1826,8 @@ class BambuPrintSync extends Plugin {
   }
 
   onNoteChanged(file) {
+    // Spending tiles update on every device, including secondary ones.
+    if (this.isPrint(file)) this.refreshStats();
     if (!this.isPrimary()) return;
     const targets = this.isPrint(file)
       ? [file]
@@ -1584,6 +1881,10 @@ class BambuPrintSync extends Plugin {
   }
 
   renderButtons(el) {
+    const stats = el.createDiv({ cls: "bambu-stats" });
+    this.statBoxes = (this.statBoxes || []).filter((b) => b.isConnected !== false);
+    this.statBoxes.push(stats);
+    this.fillStats(stats);
     const bar = el.createDiv({ cls: "bambu-buttons" });
     const btn = (icon, label, cta, fn) => {
       const b = bar.createEl("button", { text: `${icon} ${label}` });
@@ -1596,6 +1897,36 @@ class BambuPrintSync extends Plugin {
     btn("＋", t("btnAddModel"), true, () => new AddLinkModal(this.app, this).open());
     btn("⟳", t("btnSync"), false, () => this.sync());
     btn("✎", t("btnNewPrint"), false, () => this.newNote("print"));
+  }
+
+  fillStats(box) {
+    const st = this.settings;
+    const prints = this.filesIn(st.printsFolder).map((f) => this.fm(f));
+    const s = printStats(prints, st, new Date());
+    box.empty();
+    const tile = (label, b, sub, main) => {
+      const tl = box.createDiv({ cls: "bambu-stat" + (main ? " bambu-stat-main" : "") });
+      tl.createDiv({ cls: "bambu-stat-label", text: label });
+      tl.createDiv({ cls: "bambu-stat-value", text: money(b.cost, st) });
+      tl.createDiv({ cls: "bambu-stat-sub", text: sub });
+    };
+    const kg = (g) => (Math.round(g / 100) / 10).toLocaleString(LANG === "ru" ? "ru-RU" : "en-US");
+    const sub = (b) => t("statsPrints", { n: b.count, kg: kg(b.grams), h: Math.round(b.hours) });
+    tile(t("statsTotal"), s.total, sub(s.total), true);
+    tile(t("statsMonth"), s.month, sub(s.month));
+    tile(t("statsPrev"), s.prev, sub(s.prev));
+    tile(t("statsFailed"), s.failed, t("statsFailedSub", { n: s.failed.count }));
+    if (!s.priced && s.total.count) box.createDiv({ cls: "bambu-stat-hint", text: t("statsNoPrices") });
+  }
+
+  /** Refresh the spending tiles shortly after print notes change. */
+  refreshStats() {
+    if (!this.statBoxes || !this.statBoxes.length) return;
+    if (this.statsTimer) window.clearTimeout(this.statsTimer);
+    this.statsTimer = window.setTimeout(() => {
+      this.statBoxes = this.statBoxes.filter((b) => b.isConnected !== false);
+      for (const b of this.statBoxes) this.fillStats(b);
+    }, 800);
   }
 
   /** A note with the buttons and the embedded base: the place to work with the queue. */
@@ -1815,6 +2146,35 @@ class LoginModal extends Modal {
 /* add-by-link modal                                                   */
 /* ------------------------------------------------------------------ */
 
+class TakeoverModal extends Modal {
+  constructor(app, other, done) {
+    super(app);
+    this.other = other;
+    this.done = done;
+    this.answer = false;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    const when = `${new Date(Math.max(this.other.lastSync, this.other.since)).toLocaleString()}`;
+    this.setTitle ? this.setTitle(t("takeoverTitle")) : contentEl.createEl("h3", { text: t("takeoverTitle") });
+    contentEl.createEl("p", { text: t("takeoverText", { name: this.other.name, when }) });
+    new Setting(contentEl)
+      .addButton((b) => b.setButtonText(t("cancel")).onClick(() => this.close()))
+      .addButton((b) =>
+        b.setCta().setButtonText(t("takeoverYes")).onClick(() => {
+          this.answer = true;
+          this.close();
+        })
+      );
+  }
+
+  onClose() {
+    this.contentEl.empty();
+    this.done(this.answer);
+  }
+}
+
 class WelcomeModal extends Modal {
   constructor(app, plugin) {
     super(app);
@@ -1829,7 +2189,8 @@ class WelcomeModal extends Modal {
     const list = contentEl.createEl("ul");
     list.createEl("li", { text: s.printsFolder });
     list.createEl("li", { text: s.spoolsFolder });
-    list.createEl("li", { text: `${this.plugin.rootFolder()}/${LANG === "ru" ? "3D печать" : "3D printing"}.base` });
+    list.createEl("li", { text: `${this.plugin.rootFolder()}/${LANG === "ru" ? "База печатей" : "Print tracker"}.base` });
+    list.createEl("li", { text: `${this.plugin.rootFolder()}/${t("dashboardName")}.md` });
     new Setting(contentEl)
       .addButton((b) => b.setButtonText(t("welcomeSkip")).onClick(() => {
         new Notice(t("welcomeLater"));
@@ -1906,13 +2267,31 @@ class BambuSettingTab extends PluginSettingTab {
       .setName(t("primary"))
       .setDesc(isMain ? t("primaryOn") : t("primaryOff"))
       .addToggle((c) =>
-        c.setValue(isMain).onChange((v) => {
-          this.plugin.setPrimary(v);
-          new Notice(v ? t("nowPrimary") : t("nowSecondary"));
+        c.setValue(isMain).onChange(async (v) => {
+          if (v) {
+            if (!(await this.plugin.claimMain(true))) c.setValue(false);
+          } else await this.plugin.releaseMain();
           this.display();
         })
       );
+    const winner = mainDevice(this.plugin.readDevices());
+    const myId = this.plugin.deviceId();
+    const status = !winner
+      ? isMain ? t("mainIsThis", { when: this.plugin.when(s.lastSync) }) : t("mainNone")
+      : winner.id === myId
+        ? t("mainIsThis", { when: this.plugin.when(winner.lastSync || s.lastSync) })
+        : t("mainIs", { name: winner.name, when: this.plugin.when(winner.lastSync) });
+    dev.descEl.createDiv({ text: status, cls: "bambu-main-status" });
     dev.descEl.createDiv({ text: t("primaryDesc"), cls: "setting-item-description" });
+    new Setting(containerEl)
+      .setName(t("deviceName"))
+      .setDesc(t("deviceNameDesc"))
+      .addText((c) =>
+        c.setValue(this.plugin.deviceName()).onChange((v) => {
+          v = v.trim();
+          if (v) this.plugin.local(DEVICE_NAME_KEY, v);
+        })
+      );
 
     new Setting(containerEl).setName(t("hAccount")).setHeading();
     const exp = s.tokenExpires ? new Date(s.tokenExpires) : null;
@@ -2060,4 +2439,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };

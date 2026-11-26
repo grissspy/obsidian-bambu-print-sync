@@ -24,6 +24,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 |---|---|
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
 | 📎 **Queue from a link** | Click **Add model** above the board, paste a MakerWorld, Printables, Thingiverse or Cults3D link, and a planned print with the model's picture appears in the queue. |
+| 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. |
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
@@ -87,7 +88,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
 | Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
 | New print note / New spool note | Creates a note with the right properties in the configured folder. |
-| Create print dashboard | Creates a note with the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
+| Create print dashboard | Creates a note with spending tiles and the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |
 | Log in to Bambu account | Opens the login window. |
@@ -175,6 +176,8 @@ Prefer pasting links straight into notes? Turn on *Queue models from pasted link
 Obsidian Sync, Seafile, iCloud, Syncthing and similar tools copy your notes between devices. The plugin is built to work alongside them:
 
 - **One device writes.** Only the **main device** imports from the Bambu cloud, deducts filament and writes costs. The switch is the first item in the plugin settings, and there is also a command, *Make this device the main one*. Desktops are main by default, phones are not. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Make exactly one device the main one; a phone works too, but it only syncs while Obsidian is open.
+- **Two main devices cannot happen.** Each device keeps a small service note in a `Devices` folder next to your notes, and only ever writes its own note, so the vault sync has nothing to merge. Turning the switch on while another device is actively the main one asks first; the other device then steps down by itself the next time it would import, before touching anything. The settings show which device is the main one and when it last synced.
+- **No main device is noticed.** If no device is the main one, or the main device has not synced for two days, the other devices show a warning (once a day) with a *Make this the main device* button. A main device that is not logged in warns too.
 - **It waits for your sync.** The first Bambu sync after Obsidian starts is delayed (30 seconds by default) so notes made on other devices arrive first.
 - **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the one already deducted, or the oldest, and moves the other to the trash.
 - **Edits are small.** The plugin only changes properties in the note header, and only when a value actually changes, so the sync tool has little to merge and no edit loops between devices.

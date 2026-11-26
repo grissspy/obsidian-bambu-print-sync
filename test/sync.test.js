@@ -21,12 +21,29 @@ class TFile {
   }
 }
 
+const modals = [];
+let lastNoticeObj = null;
+// Minimal DOM for notices with buttons.
+function el(text = "") {
+  const e = { text, kids: [] };
+  e.createDiv = (o = {}) => { const c = el(o.text); e.kids.push(c); return c; };
+  e.createEl = (tag, o = {}) => { const c = el(o.text); c.tag = tag; e.kids.push(c); return c; };
+  e.addEventListener = (ev, fn) => { e.click = fn; };
+  e.all = () => [e.text, ...e.kids.map((k) => k.all())].filter(Boolean).join(" ");
+  e.buttons = () => [...(e.tag === "button" ? [e] : []), ...e.kids.flatMap((k) => k.buttons())];
+  return e;
+}
+global.document = { createDocumentFragment: () => el() };
+
 const fakeObsidian = {
   TFile,
   Notice: class {
     constructor(m) {
-      notices.push(m);
+      notices.push(typeof m === "string" ? m : m.all());
+      this.frag = m;
+      lastNoticeObj = this;
     }
+    hide() {}
   },
   Plugin: class {
     constructor(app) {
@@ -48,7 +65,18 @@ const fakeObsidian = {
   },
   PluginSettingTab: class {},
   Setting: class {},
-  Modal: class {},
+  Modal: class {
+    constructor(app) {
+      this.app = app;
+      this.contentEl = { empty() {} };
+    }
+    open() {
+      modals.push(this);
+    }
+    close() {
+      this.onClose();
+    }
+  },
   moment: { locale: () => "en" },
   Platform: { isMobile: false },
   normalizePath: (p) => p.replace(/\/+$/, ""),
@@ -68,7 +96,7 @@ require.cache.obsidian = { id: "obsidian", filename: "obsidian", loaded: true, e
 global.window = { setInterval: () => 1, clearInterval() {} };
 
 const Plugin = require(path.join(__dirname, "..", "main.js"));
-const { pageImage, imageExt, LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase, parseModelUrl, computeCost } = Plugin._test;
+const { mainDevice, shouldYield, pageImage, imageExt, LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase, parseModelUrl, computeCost } = Plugin._test;
 
 /* ---------- fake vault ---------- */
 
@@ -320,6 +348,132 @@ fixture = {
   assert.ok(!files.has(P + "Desk Hook (2).md"), "running twice does not rename again");
   assert.ok(files.has(P + "Desk Hook.md"), "card renamed after the page title");
   assert.equal(files.get(P + "Desk Hook.md").fm.bambu_title, "Desk Hook");
+
+  /* ---------- spending ---------- */
+  const { printStats } = Plugin._test;
+  const nowD = new Date(2026, 10, 27);
+  const st = printStats([
+    { type: "print", status: ru.statusDone, cost: 100, grams: 50, time_h: 1, time_m: 30, printed: "2026-11-02" },
+    { type: "print", status: ru.statusFailed, cost: 20.5, grams: 10, printed: "2026-11-20" },
+    { type: "print", status: ru.statusDone, cost: "7,5", grams: 5, printed: "2026-10-31" },
+    { type: "print", status: ru.statusPlanned, cost: 999, printed: "2026-11-27" },
+    { type: "spool", cost: 1000 },
+    { type: "print", status: ru.statusDone, printed: "2025-01-01", grams: 1 },
+  ], ru, nowD);
+  assert.equal(st.total.cost, 128, "planned prints and spools are not spending");
+  assert.equal(st.total.count, 4);
+  assert.equal(st.month.cost, 120.5);
+  assert.equal(st.month.hours, 1.5);
+  assert.equal(st.prev.cost, 7.5, "last month, with a comma decimal");
+  assert.equal(st.failed.cost, 20.5);
+  assert.equal(st.failed.count, 1);
+  assert.equal(st.priced, 3);
+  assert.equal(printStats([], ru, nowD).total.cost, 0);
+  const tiles = el();
+  tiles.empty = () => { tiles.kids = []; };
+  plugin.fillStats(tiles);
+  assert.equal(tiles.kids.length >= 4, true, "four spending tiles");
+  assert.ok(tiles.all().includes("Spent on printing") && tiles.all().includes("This month"), tiles.all());
+  plugin.fillStats(tiles);
+  assert.ok(tiles.kids.length <= 5, "refresh replaces the tiles instead of adding more");
+
+  /* ---------- two devices sharing one vault ---------- */
+  assert.equal(mainDevice([{ id: "a", main: true, since: 1 }, { id: "b", main: true, since: 2 }]).id, "b", "latest claim wins");
+  assert.equal(shouldYield([{ id: "a", main: true, since: 1 }, { id: "b", main: true, since: 2 }], "a"), true);
+  assert.equal(shouldYield([{ id: "a", main: true, since: 1 }, { id: "b", main: true, since: 2 }], "b"), false);
+  assert.equal(shouldYield([{ id: "a", main: true, since: 1 }], "a"), false);
+  assert.equal(mainDevice([{ id: "a", main: false }]), null);
+
+  const lastNotice = () => notices[notices.length - 1];
+  const D = "3D/Devices/";
+  const devNotes = () => [...files.keys()].filter((k) => k.startsWith(D));
+  const devFm = (p) => files.get(p).fm;
+
+  // Device A (the plugin above) synced as the main one, so it has its own device note.
+  plugin.local("bambu-print-sync-device-name", "Mac");
+  await plugin.sync(true);
+  assert.equal(devNotes().length, 1, "one note per device");
+  const aNote = devNotes()[0];
+  assert.equal(devFm(aNote).type, "bambu-device");
+  assert.equal(devFm(aNote).main, true);
+  assert.ok(devFm(aNote).last_sync, "main device records its last sync");
+
+  // Device B: same vault, its own local storage. A phone is secondary by default.
+  const localB = { "bambu-print-sync-device-name": "Pixel", "bambu-print-sync-primary": "0" };
+  const appB = Object.assign({}, app, {
+    loadLocalStorage: (k) => (k in localB ? localB[k] : null),
+    saveLocalStorage: (k, v) => { localB[k] = v; },
+  });
+  const phone = new Plugin(appB);
+  await phone.onload();
+  Object.assign(phone.settings, plugin.settings, { token: "y" });
+  assert.notEqual(phone.deviceId(), plugin.deviceId(), "each device has its own id");
+
+  // A healthy setup: B sees A syncing and says nothing.
+  let before = notices.length;
+  await phone.checkDevices();
+  assert.equal(notices.length, before, "no warning while the main device syncs");
+  assert.equal(devNotes().length, 2, "B wrote its own note");
+
+  // Taking over while A is active asks first; cancelling changes nothing.
+  let claim = phone.claimMain(true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(modals.length, 1, "asks before taking over from an active main device");
+  modals.pop().close();
+  assert.equal(await claim, false);
+  assert.equal(phone.isPrimary(), false);
+
+  // Confirming makes B the main device …
+  claim = phone.claimMain(true);
+  await new Promise((r) => setTimeout(r, 0));
+  const m = modals.pop();
+  m.answer = true;
+  m.close();
+  assert.equal(await claim, true);
+  assert.equal(phone.isPrimary(), true);
+
+  // … and A, still switched on, steps down the next time it would import: both-main cannot persist.
+  const aSync = devFm(aNote).last_sync;
+  await new Promise((r) => setTimeout(r, 5));
+  await plugin.sync(true);
+  assert.equal(plugin.isPrimary(), false, "older main device steps down");
+  assert.ok(lastNotice().includes("Pixel"), "and says who took over: " + lastNotice());
+  assert.equal(devFm(aNote).main, false);
+  assert.equal(devFm(aNote).last_sync, aSync, "the device that stepped down did not import");
+  assert.equal(shouldYield(phone.readDevices(), phone.deviceId()), false, "B stays main");
+
+  // Nobody main: the remaining device warns, with a button to fix it, once a day.
+  await phone.releaseMain();
+  before = notices.length;
+  await plugin.checkDevices();
+  assert.equal(notices.length, before + 1, "warns when no device imports");
+  assert.ok(lastNotice().includes("основного устройства нет") || lastNotice().includes("no device is the main one"), lastNotice());
+  await plugin.checkDevices();
+  assert.equal(notices.length, before + 1, "the warning is not repeated within a day");
+
+  // Main device gone quiet for days: warn with its name.
+  plugin.local("bambu-print-sync-warned", "0");
+  const bNote = devNotes().find((p) => p !== aNote);
+  const old = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+  Object.assign(devFm(bNote), { main: true, main_since: old, last_sync: old });
+  await plugin.checkDevices();
+  assert.ok(lastNotice().includes("Pixel"), "names the silent main device: " + lastNotice());
+
+  // The warning's button makes this device the main one (no question: the other one is silent).
+  const buttons = lastNoticeObj.frag.buttons();
+  assert.deepEqual(buttons.map((b) => b.text), ["Make this the main device", "Open settings"]);
+  buttons[0].click();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(modals.length, 0, "no question when the other main device is silent");
+  assert.equal(plugin.isPrimary(), true, "button made this device the main one");
+  assert.equal(shouldYield(plugin.readDevices(), plugin.deviceId()), false, "A is the main device again");
+
+  // A main device without a login also warns.
+  plugin.local("bambu-print-sync-warned", "0");
+  plugin.settings.token = "";
+  await plugin.checkDevices();
+  assert.ok(lastNotice().includes("not logged in"), lastNotice());
+  plugin.settings.token = "x";
 
   console.log("notices:", notices.join(" | "));
   console.log("All tests passed.");
