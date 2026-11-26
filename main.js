@@ -123,6 +123,7 @@ const STRINGS = {
     pasteReplace: "Replace the pasted link with a link to the print note",
     pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
     openModel: "Open the model",
+    plateWord: "plate",
     hCost: "Print cost",
     costDesc: "The plugin writes cost_filament, cost_power, cost_wear and cost into each print. Finished prints keep the cost they had; use the recalculate command after changing rates.",
     printerModel: "Printer model",
@@ -244,6 +245,7 @@ const STRINGS = {
     pasteReplace: "Заменять вставленную ссылку ссылкой на заметку печати",
     pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
     openModel: "Открыть модель",
+    plateWord: "пластина",
     hCost: "Стоимость печати",
     costDesc: "Плагин записывает в каждую печать cost_filament, cost_power, cost_wear и cost. Завершённые печати сохраняют свою стоимость; после смены тарифов запусти пересчёт.",
     printerModel: "Модель принтера",
@@ -383,6 +385,8 @@ function computeCost(fm, spoolPrice, st) {
   const power = (hours * num(st.powerW) * num(st.kwhPrice)) / 1000;
   const life = num(st.lifetimeH);
   const wear = hours * ((life > 0 ? num(st.printerPrice) / life : 0) + num(st.maintPerHour));
+  // Nothing priced yet (no spool price, no rates): write nothing rather than a misleading 0.
+  if (round2(filament + power + wear) === 0) return null;
   return {
     cost_filament: round2(filament),
     cost_power: round2(power),
@@ -1044,7 +1048,8 @@ class BambuPrintSync extends Plugin {
   }
 
   async createPrintNote(rec) {
-    const path = this.uniquePath(this.settings.printsFolder, `${rec.title} ${rec.printed}`.trim());
+    const plate = rec.plate > 1 ? ` · ${t("plateWord")} ${rec.plate}` : "";
+    const path = this.uniquePath(this.settings.printsFolder, `${rec.title}${plate} ${rec.printed}`.trim());
     const body = ["---", "type: print", "---", t("imported"), "", `## ${t("notes")}`, ""].join("\n");
     return this.app.vault.create(path, body);
   }
@@ -1262,7 +1267,7 @@ class BambuPrintSync extends Plugin {
     if (fm.type !== "print") return false;
     const st = this.settings;
     const final = [st.statusDone, st.statusFailed].includes(fm.status);
-    if (!force && final && fm.cost !== undefined && fm.cost !== null && fm.cost !== "") return false;
+    if (!force && final && num(fm.cost) > 0) return false;
     const c = computeCost(fm, (link) => this.spoolPricePerKg(link, file.path), st);
     if (!c) return false;
     if (Object.keys(c).every((k) => num(fm[k]) === c[k] && fm[k] !== undefined)) return false;

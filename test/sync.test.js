@@ -146,6 +146,7 @@ fixture = {
   const multi = computeCost({ grams: 10, time_h: 0, time_m: 30, usage: ["[[A]]: 6", "[[B]]: 4"] }, (l) => (l === "A" ? 20 : 30), rates);
   assert.equal(multi.cost_filament, 0.24);
   assert.equal(computeCost({ status: "Planned" }, () => 0, rates), null);
+  assert.equal(computeCost({ grams: 20, time_h: 1 }, () => 0, {}), null, "no prices, no zero cost");
 
   const mw = parseModelUrl("https://makerworld.com/en/models/777001-cable-clip-for-desk#profileId-55");
   assert.deepEqual([mw.site, mw.id, mw.title, mw.profileId], ["MakerWorld", "777001", "Cable clip for desk", "55"]);
