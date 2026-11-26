@@ -349,6 +349,27 @@ fixture = {
   assert.ok(files.has(P + "Desk Hook.md"), "card renamed after the page title");
   assert.equal(files.get(P + "Desk Hook.md").fm.bambu_title, "Desk Hook");
 
+  /* ---------- failed prints ---------- */
+  const tr = Plugin._test.taskToRecord;
+  const failed = (extra) => tr(Object.assign({ id: 1, status: 3, weight: 100, costTime: 3600, amsDetailMapping: [{ filamentType: "PLA", sourceColor: "000000FF", weight: 100 }] }, extra), ru);
+  let r = failed({ startTime: "2026-11-01T10:00:00Z", endTime: "2026-11-01T10:15:00Z" });
+  assert.equal(r.grams, 25, "a quarter of the way: a quarter of the weight");
+  assert.equal(r.filaments[0].grams, 25);
+  assert.equal(r.time_m, 15, "runtime, not the estimate");
+  assert.equal(r.gramsEstimated, true);
+  r = failed({ startTime: "2026-11-01T10:00:00Z" });
+  assert.equal(r.grams, 0, "cancelled before it started: nothing spent");
+  assert.equal(r.time_h + r.time_m, 0, "and no printer time");
+  assert.equal(r.gramsEstimated, true);
+  r = failed({ startTime: "2026-11-01T10:00:00Z", endTime: "2026-11-01T10:15:00Z", costTime: 0 });
+  assert.equal(r.grams, 100, "no slicer estimate: full weight as an upper bound");
+  assert.equal(r.gramsEstimated, true);
+  r = failed({ startTime: "2026-11-01T10:00:00Z", endTime: "2026-11-01T13:00:00Z" });
+  assert.equal(r.grams, 100, "never more than the full weight");
+  r = tr({ id: 2, status: 2, weight: 50, costTime: 3600, startTime: "2026-11-01T10:00:00Z" }, ru);
+  assert.equal(r.time_h, 1, "a finished job without an end time still uses the estimate");
+  assert.equal(r.gramsEstimated, false);
+
   /* ---------- spending ---------- */
   const { printStats } = Plugin._test;
   const nowD = new Date(2026, 10, 27);

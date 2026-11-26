@@ -30,7 +30,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
 | 🧵 **Spools** | Finds the spool by material and AMS colour, splits multi-colour prints across spools, and deducts grams once per print. |
 | 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. |
-| ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job; the plugin scales it by how far the job got and marks it as an estimate. |
+| ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job. The plugin scales it by how long the job ran against the slicer estimate, counts only the time it really ran, and marks the grams as an estimate (`grams_estimated`). A job cancelled before it started costs nothing; without a slicer estimate the full weight is kept as an upper bound. Warm-up and calibration count as printing, so very early failures are slightly overestimated; fix the grams by hand if you know them, the sync will not overwrite them. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
 
 ## Screenshots

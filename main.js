@@ -567,14 +567,18 @@ function taskToRecord(task, st, fallbackTitle) {
   else state = "printing";
 
   // Printer time: real runtime once a job has ended, the slicer estimate while it runs.
-  const seconds = state === "printing" ? est : ran || est;
+  // A failed job never gets the estimate: it only ran as long as it ran (0 if it never started).
+  const seconds = state === "printing" ? est : state === "failed" ? ran : ran || est;
 
   // For a failed job the cloud reports the full sliced weight: scale it by how far the job got.
+  // Without a runtime it never really started (0 g); without a slicer estimate the full weight
+  // is only an upper bound. Either way the grams are marked as estimated.
   let share = 1;
   let estimated = false;
-  if (state === "failed" && est > 0 && ran > 0) {
-    share = Math.min(1, ran / est);
+  if (state === "failed") {
     estimated = true;
+    if (ran <= 0) share = 0;
+    else if (est > 0) share = Math.min(1, ran / est);
   }
 
   const round1 = (x) => Math.round(x * 10) / 10;
