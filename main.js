@@ -53,6 +53,10 @@ const STRINGS = {
     deductNone: "Bambu: nothing to deduct",
     spoolMissing: "{note}: spool “{spool}” not found",
     imported: "Imported from the Bambu cloud.",
+    imagesFolder: "Images",
+    images: "Model images",
+    imagesDesc: "Save a picture of each model next to the notes: from the model page when you add a link, and the plate preview from the Bambu cloud after printing. Shown on the queue cards.",
+    covers: "images: {n}",
     notes: "Notes",
     untitled: "Print",
     tfaNoToken: "Could not get a token after two-factor check. Paste the token manually in the settings.",
@@ -115,6 +119,13 @@ const STRINGS = {
     newPrintName: "New print",
     cmdAddLink: "Add model to queue by link",
     addLinkTitle: "Add a model to the queue",
+    btnAddModel: "Add model",
+    btnSync: "Sync",
+    btnNewPrint: "Empty card",
+    cmdDashboard: "Create print dashboard (buttons + tracker)",
+    dashboardName: "Print dashboard",
+    dashboardCreated: "Bambu: created {path}",
+    unknownBlock: "Bambu: unknown button block",
     addLinkHint: "Paste a link to a model on MakerWorld, Printables, Thingiverse or Cults3D.",
     add: "Add",
     queued: "Bambu: “{title}” added to the queue",
@@ -122,7 +133,7 @@ const STRINGS = {
     notModelLink: "This does not look like a model link.",
     hModels: "Model links",
     pasteToQueue: "Queue models from pasted links",
-    pasteToQueueDesc: "When you paste a MakerWorld, Printables, Thingiverse or Cults3D model link into any note, a planned print is created.",
+    pasteToQueueDesc: "When you paste a MakerWorld, Printables, Thingiverse or Cults3D model link into any note, a planned print is created. Off by default: use the “Add model” button above the queue instead.",
     pasteReplace: "Replace the pasted link with a link to the print note",
     pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
     openModel: "Open the model",
@@ -190,6 +201,10 @@ const STRINGS = {
     deductNone: "Bambu: списывать нечего",
     spoolMissing: "{note}: не найдена катушка «{spool}»",
     imported: "Импортировано из облака Bambu.",
+    imagesFolder: "Картинки",
+    images: "Картинки моделей",
+    imagesDesc: "Сохранять картинку каждой модели рядом с заметками: со страницы модели при добавлении ссылки и превью пластины из облака Bambu после печати. Показываются на карточках очереди.",
+    covers: "картинок: {n}",
     notes: "Заметки",
     untitled: "Печать",
     tfaNoToken: "Не удалось получить токен после двухфакторной проверки. Вставь токен вручную в настройках.",
@@ -252,6 +267,13 @@ const STRINGS = {
     newPrintName: "Новая печать",
     cmdAddLink: "Добавить модель в очередь по ссылке",
     addLinkTitle: "Добавить модель в очередь",
+    btnAddModel: "Добавить модель",
+    btnSync: "Синхронизировать",
+    btnNewPrint: "Пустая карточка",
+    cmdDashboard: "Создать панель печати (кнопки + таблица)",
+    dashboardName: "Панель печати",
+    dashboardCreated: "Bambu: создана {path}",
+    unknownBlock: "Bambu: неизвестный блок кнопок",
     addLinkHint: "Вставь ссылку на модель с MakerWorld, Printables, Thingiverse или Cults3D.",
     add: "Добавить",
     queued: "Bambu: «{title}» добавлена в очередь",
@@ -259,7 +281,7 @@ const STRINGS = {
     notModelLink: "Это не похоже на ссылку на модель.",
     hModels: "Ссылки на модели",
     pasteToQueue: "Ставить в очередь по вставленной ссылке",
-    pasteToQueueDesc: "Когда вставляешь в любую заметку ссылку на модель с MakerWorld, Printables, Thingiverse или Cults3D, создаётся запланированная печать.",
+    pasteToQueueDesc: "Когда вставляешь в любую заметку ссылку на модель с MakerWorld, Printables, Thingiverse или Cults3D, создаётся запланированная печать. По умолчанию выключено: удобнее кнопка «Добавить модель» над очередью.",
     pasteReplace: "Заменять вставленную ссылку ссылкой на заметку печати",
     pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
     openModel: "Открыть модель",
@@ -358,8 +380,9 @@ const DEFAULT_SETTINGS = Object.assign(
     syncOnStart: true,
     intervalMin: 30,
     autoDeduct: true,
-    pasteToQueue: true,
+    pasteToQueue: false,
     pasteReplace: false,
+    images: true,
     printerModel: "P1S",
     powerW: 120,
     kwhPrice: 0,
@@ -523,6 +546,7 @@ function taskToRecord(task, st, fallbackTitle) {
     time_est_min: est ? Math.round(est / 60) : null,
     printed: task.startTime ? localDate(task.startTime) : "",
     plate: Number(task.plateIndex) || 1,
+    cover: /^https?:\/\//.test(String(task.cover || "")) ? String(task.cover) : "",
     device: task.deviceName || task.deviceId || "",
     filaments,
   };
@@ -584,18 +608,87 @@ const MODEL_SITES = [
   { site: "Cults3D", re: /^https?:\/\/(?:www\.)?cults3d\.com\/[a-z]{2}\/(?:3d-model|modele-3d|modelo-3d)\/[^/]+\/([^/?#]+)()/i },
 ];
 
+/** The preview picture a page advertises for link previews (og:image / twitter:image). */
+function pageImage(html, pageUrl) {
+  html = String(html || "");
+  const metas = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const key of ["og:image", "og:image:url", "twitter:image"]) {
+    for (const tag of metas) {
+      const name = tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i);
+      if (!name || name[1].toLowerCase() !== key) continue;
+      const content = tag.match(/\bcontent\s*=\s*["']([^"']+)["']/i);
+      if (!content) continue;
+      const raw = content[1].replace(/&amp;/g, "&").trim();
+      try {
+        const abs = new URL(raw, pageUrl).toString();
+        if (/^https?:/.test(abs)) return abs;
+      } catch (e) {
+        /* bad URL */
+      }
+    }
+  }
+  return "";
+}
+
+/** Image type from the first bytes (servers often say "binary/octet-stream"). */
+function sniffImage(buf) {
+  const b = new Uint8Array(buf || new ArrayBuffer(0)).subarray(0, 12);
+  if (b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "png";
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
+  if (b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return "gif";
+  if (b.length >= 12 && String.fromCharCode(...b.subarray(0, 4)) === "RIFF" && String.fromCharCode(...b.subarray(8, 12)) === "WEBP") return "webp";
+  return "";
+}
+
+/** Model name from a page's og:title / <title>, without the site suffix. */
+function pageTitle(html) {
+  html = String(html || "");
+  let raw = "";
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const name = tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i);
+    const content = tag.match(/\bcontent\s*=\s*["']([^"']*)["']/i);
+    if (name && content && name[1].toLowerCase() === "og:title") {
+      raw = content[1];
+      break;
+    }
+  }
+  if (!raw) {
+    const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    raw = m ? m[1] : "";
+  }
+  raw = raw.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  // Drop trailing " - Free 3D Print Model - MakerWorld"-style parts.
+  const parts = raw.split(/\s+[|–—-]\s+/);
+  while (parts.length > 1 && /makerworld|printables|thingiverse|cults|free|download|\b3d\b|\bstl\b|\bmodel/i.test(parts[parts.length - 1])) parts.pop();
+  raw = parts.join(" - ").replace(/\s+/g, " ").trim();
+  return raw.length > 120 ? raw.slice(0, 120).trim() : raw;
+}
+
+/** File extension for a downloaded image. */
+function imageExt(contentType, url) {
+  const ct = String(contentType || "").toLowerCase();
+  if (ct.includes("png")) return "png";
+  if (ct.includes("webp")) return "webp";
+  if (ct.includes("gif")) return "gif";
+  if (ct.includes("jpeg") || ct.includes("jpg")) return "jpg";
+  const m = String(url || "").split(/[?#]/)[0].match(/\.(png|jpe?g|webp|gif)$/i);
+  return m ? m[1].toLowerCase().replace("jpeg", "jpg") : "jpg";
+}
+
 /** Recognise a model page link. Returns null for anything else. */
 function parseModelUrl(text) {
-  const url = String(text || "").trim();
+  // Phone keyboards may capitalise the scheme ("Https://…").
+  const url = String(text || "").trim().replace(/^https?:/i, (m) => m.toLowerCase());
   if (!url || /\s/.test(url)) return null;
   for (const { site, re } of MODEL_SITES) {
     const m = url.match(re);
     if (!m) continue;
     const isCults = site === "Cults3D";
     const id = m[1];
-    const title = slugToTitle(isCults ? m[1] : m[2]) || `${site} ${id}`;
+    const slugTitle = slugToTitle(isCults ? m[1] : m[2]);
+    const title = slugTitle || `${site} ${id}`;
     const profile = url.match(/#profileId-(\d+)/i);
-    return { site, id, title, url, profileId: profile ? profile[1] : "" };
+    return { site, id, title, url, profileId: profile ? profile[1] : "", titleFromUrl: !!slugTitle };
   }
   return null;
 }
@@ -677,6 +770,7 @@ properties:
 views:
   - type: kanban
     name: ${q(L.queue)}
+    image: note.cover
     filters:
       and:
         - type == "print"
@@ -851,6 +945,9 @@ class BambuPrintSync extends Plugin {
     this.updateStatusBar();
 
     this.addRibbonIcon("printer", t("ribbon"), () => this.sync());
+    this.addRibbonIcon("list-plus", t("addLinkTitle"), () => new AddLinkModal(this.app, this).open());
+    // ```bambu-print-sync``` block: buttons placed above an embedded base.
+    this.registerMarkdownCodeBlockProcessor("bambu-print-sync", (src, el) => this.renderButtons(el));
     this.addCommand({ id: "sync", name: t("cmdSync"), callback: () => this.sync() });
     this.addCommand({ id: "deduct", name: t("cmdDeduct"), callback: () => this.deductAll(true) });
     this.addCommand({ id: "login", name: t("cmdLogin"), callback: () => new LoginModal(this.app, this).open() });
@@ -868,6 +965,7 @@ class BambuPrintSync extends Plugin {
         if (on && this.settings.token) this.sync(true);
       },
     });
+    this.addCommand({ id: "create-dashboard", name: t("cmdDashboard"), callback: () => this.createDashboard(true) });
     this.addCommand({ id: "recalc-cost", name: t("cmdRecalc"), callback: () => this.recalcAll(true) });
 
     this.costTimers = new Map();
@@ -996,6 +1094,55 @@ class BambuPrintSync extends Plugin {
     return path;
   }
 
+  /** Download an image and set it as the note's cover. Quietly does nothing on failure. */
+  async saveCover(file, url, key) {
+    if (!this.settings.images || !url) return false;
+    try {
+      if (this.fm(file).cover) return false;
+      const res = await requestUrl({ url, method: "GET", throw: false });
+      if (res.status >= 400 || !res.arrayBuffer || !res.arrayBuffer.byteLength) return false;
+      const headers = res.headers || {};
+      const ct = headers["content-type"] || headers["Content-Type"] || "";
+      const sniffed = sniffImage(res.arrayBuffer);
+      if (!sniffed && !/^image\//i.test(ct)) return false;
+      const dir = normalizePath(`${this.rootFolder()}/${t("imagesFolder")}`);
+      await this.ensureFolder(dir);
+      const name = `${safeFileName(key)}.${sniffed || imageExt(ct, url)}`;
+      const path = `${dir}/${name}`;
+      if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.createBinary(path, res.arrayBuffer);
+      await this.app.fileManager.processFrontMatter(file, (fm) => {
+        if (!fm.cover) fm.cover = `[[${name}]]`;
+      });
+      return true;
+    } catch (e) {
+      console.debug("[bambu-print-sync] image", e);
+      return false;
+    }
+  }
+
+  /** Picture for a model link: the preview image its page advertises. */
+  async fetchModelImage(file, model) {
+    if (!this.settings.images) return false;
+    try {
+      const res = await requestUrl({ url: model.url, method: "GET", throw: false });
+      if (res.status >= 400) return false;
+      // A link without a name in it ("/models/12703"): name the card after the page.
+      const name = !model.titleFromUrl && pageTitle(res.text);
+      if (name) {
+        await this.app.fileManager.processFrontMatter(file, (fm) => (fm.bambu_title = name));
+        const dir = file.parent ? file.parent.path : this.settings.printsFolder;
+        if (file.path !== normalizePath(`${dir}/${safeFileName(name)}.md`)) {
+          await this.app.fileManager.renameFile(file, this.uniquePath(dir, name));
+        }
+      }
+      const img = pageImage(res.text, model.url);
+      return img ? await this.saveCover(file, img, `${model.site}-${model.id}`) : false;
+    } catch (e) {
+      console.debug("[bambu-print-sync] model page", e);
+      return false;
+    }
+  }
+
   rootFolder() {
     const parts = normalizePath(this.settings.printsFolder).split("/");
     return parts.length > 1 ? parts.slice(0, -1).join("/") : parts[0];
@@ -1119,6 +1266,28 @@ class BambuPrintSync extends Plugin {
         created++;
       }
 
+      // Older finished prints: add the MakerWorld link if the cloud knows the model.
+      for (const rec of records) {
+        const f = rec.designId && byId.get(rec.id);
+        if (!f || this.fm(f).model_url) continue;
+        await this.app.fileManager.processFrontMatter(f, (fm) => {
+          if (!fm.makerworld_id) fm.makerworld_id = rec.designId;
+          if (!fm.model_url) {
+            fm.model_url = `https://makerworld.com/models/${rec.designId}`;
+            fm.model_site = "MakerWorld";
+          }
+        });
+      }
+
+      // Plate previews from the cloud for prints that have no picture yet.
+      let covers = 0;
+      if (st.images) {
+        for (const rec of records) {
+          const f = rec.cover && byId.get(rec.id);
+          if (f && !this.fm(f).cover && (await this.saveCover(f, rec.cover, `bambu-${rec.id}`))) covers++;
+        }
+      }
+
       st.lastSync = Date.now();
       await this.saveSettings();
       this.refreshSettings();
@@ -1129,6 +1298,7 @@ class BambuPrintSync extends Plugin {
       if (created) parts.push(t("created", { n: created }));
       if (linked) parts.push(t("linked", { n: linked }));
       if (updated) parts.push(t("updated", { n: updated }));
+      if (covers) parts.push(t("covers", { n: covers }));
       if (deducted) parts.push(t("deducted", { n: deducted }));
       if (removed) parts.push(t("dupRemoved", { n: removed }));
       if (!quiet || parts.length) new Notice(`Bambu: ${parts.length ? parts.join(", ") : t("nothingNew")}`);
@@ -1175,6 +1345,12 @@ class BambuPrintSync extends Plugin {
       if (rec.printed) fm.printed = rec.printed;
       fm.plate = rec.plate;
       if (rec.device) fm.printer = rec.device;
+      // MakerWorld model the job was printed from: gives imported prints a model link.
+      if (rec.designId && !fm.makerworld_id) fm.makerworld_id = rec.designId;
+      if (rec.designId && !fm.model_url) {
+        fm.model_url = `https://makerworld.com/models/${rec.designId}`;
+        fm.model_site = "MakerWorld";
+      }
       fm.filaments = rec.filaments.map((f) => `${f.type || "?"} #${f.color || "??????"} — ${f.grams} g`);
       fm.source = "bambu-cloud";
       if (!fm.created) fm.created = rec.printed || localDate(new Date().toISOString());
@@ -1317,6 +1493,7 @@ class BambuPrintSync extends Plugin {
       );
       const file = await this.app.vault.create(path, lines.join("\n"));
       new Notice(t("queued", { title: file.basename }));
+      this.fetchModelImage(file, model);
       return file;
     } catch (e) {
       console.error("[bambu-print-sync]", e);
@@ -1397,21 +1574,57 @@ class BambuPrintSync extends Plugin {
     if (!exists) new WelcomeModal(this.app, this).open();
   }
 
+  renderButtons(el) {
+    const bar = el.createDiv({ cls: "bambu-buttons" });
+    bar.style.display = "flex";
+    bar.style.flexWrap = "wrap";
+    bar.style.gap = "8px";
+    const btn = (icon, label, cta, fn) => {
+      const b = bar.createEl("button", { text: `${icon} ${label}` });
+      if (cta) b.addClass("mod-cta");
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        fn();
+      });
+    };
+    btn("＋", t("btnAddModel"), true, () => new AddLinkModal(this.app, this).open());
+    btn("⟳", t("btnSync"), false, () => this.sync());
+    btn("✎", t("btnNewPrint"), false, () => this.newNote("print"));
+  }
+
+  /** A note with the buttons and the embedded base: the place to work with the queue. */
+  async createDashboard(open) {
+    const basePath = await this.createBase(true);
+    const root = this.rootFolder();
+    const path = normalizePath(`${root}/${t("dashboardName")}.md`);
+    let file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) {
+      const baseName = basePath.split("/").pop();
+      file = await this.app.vault.create(path, "```bambu-print-sync\n```\n\n![[" + baseName + "]]\n");
+      new Notice(t("dashboardCreated", { path }));
+    }
+    if (open && file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);
+    return path;
+  }
+
   async setupTracker() {
     await this.ensureFolder(this.settings.printsFolder);
     await this.ensureFolder(this.settings.spoolsFolder);
-    const path = await this.createBase();
+    await this.createBase(true);
+    const path = await this.createDashboard(false);
     const file = path && this.app.vault.getAbstractFileByPath(path);
     if (file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);
   }
 
-  async createBase() {
+  async createBase(quiet) {
     const root = this.rootFolder();
     await this.ensureFolder(root);
-    const name = LANG === "ru" ? "3D печать.base" : "3D printing.base";
-    const path = normalizePath(`${root}/${name}`);
+    // Older versions named the base after the folder; keep using it if it is there.
+    const names = LANG === "ru" ? ["База печатей.base", "3D печать.base"] : ["Print tracker.base", "3D printing.base"];
+    const found = names.map((n) => normalizePath(`${root}/${n}`)).find((p) => this.app.vault.getAbstractFileByPath(p));
+    const path = found || normalizePath(`${root}/${names[0]}`);
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice(t("baseExists", { path }));
+      if (!quiet) new Notice(t("baseExists", { path }));
       return path;
     }
     await this.app.vault.create(path, buildBase(root, this.settings, LANG));
@@ -1656,6 +1869,20 @@ class AddLinkModal extends Modal {
         if (e.key === "Enter") submit();
       });
       window.setTimeout(() => c.inputEl.focus(), 0);
+      // Prefill with a model link already on the clipboard.
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then((clip) => {
+            clip = String(clip || "").trim();
+            if (!url && parseModelUrl(clip)) {
+              c.setValue(clip);
+              url = clip;
+            }
+          }, () => {});
+        }
+      } catch (e) {
+        /* no clipboard access */
+      }
     });
     new Setting(contentEl).addButton((b) => b.setCta().setButtonText(t("add")).onClick(submit));
   }
@@ -1795,6 +2022,7 @@ class BambuSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName(t("hModels")).setHeading();
     toggle(t("pasteToQueue"), "pasteToQueue", t("pasteToQueueDesc"));
     toggle(t("pasteReplace"), "pasteReplace", t("pasteReplaceDesc"));
+    toggle(t("images"), "images", t("imagesDesc"));
 
     new Setting(containerEl).setName(t("hCost")).setDesc(t("costDesc")).setHeading();
     const numeric = (v) => Math.max(0, num(v));
@@ -1840,4 +2068,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };

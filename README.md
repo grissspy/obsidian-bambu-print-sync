@@ -23,7 +23,8 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | | |
 |---|---|
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
-| 📎 **Queue from a link** | Paste a MakerWorld, Printables, Thingiverse or Cults3D link into any note and a planned print appears in the queue. |
+| 📎 **Queue from a link** | Click **Add model** above the board, paste a MakerWorld, Printables, Thingiverse or Cults3D link, and a planned print with the model's picture appears in the queue. |
+| 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
 | 🧵 **Spools** | Finds the spool by material and AMS colour, splits multi-colour prints across spools, and deducts grams once per print. |
@@ -72,9 +73,9 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 1. Install the plugin (Community plugins → Browse → *Bambu Print Sync*), or put `main.js` and `manifest.json` from the [latest release](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) into `.obsidian/plugins/bambu-print-sync/`.
 2. Open the plugin settings, click **Log in** and enter your Bambu Lab email and password. If Bambu sends a code by email, the plugin asks for it.
-3. On first start the plugin offers to create the prints and spools folders and the tracker table. Skipped it? Run **Create tracker base** later.
+3. On first start the plugin offers to create the prints and spools folders, the tracker base (`Print tracker.base`) and the **Print dashboard** note: buttons on top, the board below. Skipped it? Run **Create print dashboard** later.
 4. Set **Import prints since** to today if you do not want your whole history, and fill in the **Print cost** section (see below).
-5. Queue a model by pasting its MakerWorld or Printables link into any note, or run **Add model to queue by link**.
+5. Queue a model with the **Add model** button on the dashboard (or the ➕ icon in the ribbon) and paste its link.
 6. Add your spools with **New spool note**, filling `material`, `color_hex`, `price` and `weight_g`.
 7. Click the printer icon in the ribbon, or wait for the automatic sync.
 
@@ -86,6 +87,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
 | Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
 | New print note / New spool note | Creates a note with the right properties in the configured folder. |
+| Create print dashboard | Creates a note with the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |
 | Log in to Bambu account | Opens the login window. |
@@ -106,7 +108,8 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `filaments` | `PLA #000000 — 42.4 g` | sync |
 | `usage` | `"[[PLA Basic Black]]: 30"` | sync, for multi-colour prints |
 | `grams_estimated` | `true` | sync, for failed prints |
-| `model_url`, `model_site`, `makerworld_id` | `https://makerworld.com/…` | link paste |
+| `model_url`, `model_site`, `makerworld_id` | `https://makerworld.com/…` | Add model, or the cloud sync |
+| `cover` | `[[bambu-123.png]]` | model page or Bambu cloud |
 | `bambu_task_id`, `bambu_title`, `printer`, `time_est_min`, `source` | | sync |
 | `spool_deducted` | `true` | plugin, after deducting |
 | `price_kg` | `1990` | you, optional override of the spool price |
@@ -154,9 +157,18 @@ The plugin writes `cost_filament`, `cost_power`, `cost_wear` and `cost` into a p
 
 ### Queue from a link
 
-Paste a model link on its own into any note. The plugin recognises MakerWorld, Printables, Thingiverse and Cults3D pages, takes the model name from the URL and creates a planned print with the link. The URL stays where you pasted it; turn on *Replace the pasted link* to get a link to the print note instead. Pasting the same model again does not create a second card while the first is still queued.
+Click **Add model** on the print dashboard (or the ➕ ribbon icon, or the *Add model to queue by link* command) and paste the link. If a model link is already on the clipboard, it is filled in for you. The plugin recognises MakerWorld, Printables, Thingiverse and Cults3D pages, takes the model name from the URL (or from the page, if the link has none, like `/models/12703`) and creates a planned print with the link. Adding the same model again does not create a second card while the first is still queued.
 
-The plugin does not download the model page: grams and time come from the cloud sync once you print, or you fill them in after slicing.
+You can put the buttons into any note yourself:
+
+````markdown
+```bambu-print-sync
+```
+````
+
+Prefer pasting links straight into notes? Turn on *Queue models from pasted links* in the settings: then a model link pasted into any note creates a card too.
+
+**Pictures.** The plugin saves the picture the model page offers for link previews into an `Images` folder next to your notes and shows it on the queue card. Some sites block automated requests; then the card stays without a picture until you print, when the plate preview from the Bambu cloud is used. Turn off *Model images* if you do not want this. Imported prints also get a link to their MakerWorld model when the cloud knows it. Grams and time come from the cloud sync once you print, or you fill them in after slicing.
 
 ## Using it with a vault sync
 
@@ -167,16 +179,19 @@ Obsidian Sync, Seafile, iCloud, Syncthing and similar tools copy your notes betw
 - **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the one already deducted, or the oldest, and moves the other to the trash.
 - **Edits are small.** The plugin only changes properties in the note header, and only when a value actually changes, so the sync tool has little to merge and no edit loops between devices.
 
-Link-to-queue works on every device, since it is something you do by hand.
+Adding models works on every device, since it is something you do by hand.
 
 ## Privacy and network use
 
 This plugin needs a **Bambu Lab account** and talks to the **Bambu Lab cloud** over the internet:
 
 - `api.bambulab.com` (or `api.bambulab.cn` for China accounts) to log in, list your printers and read your print history;
-- `bambulab.com/api/sign-in/tfa` only if your account uses two-factor authentication.
+- `bambulab.com/api/sign-in/tfa` only if your account uses two-factor authentication;
+- the Bambu CDN, to download plate preview images of your prints (if *Model images* is on).
 
-Your password is sent to Bambu Lab once to get a token and is **never stored**. The token (valid about three months) is saved in `.obsidian/plugins/bambu-print-sync/data.json` inside your vault, so it travels with your vault sync. No data goes anywhere else: no telemetry, no analytics, no third-party servers.
+When you add a model by link, the plugin opens **that model page** (MakerWorld, Printables, Thingiverse or Cults3D) once to read its preview picture, and downloads the picture. Nothing is sent to those sites except the normal page request. Turn off *Model images* to skip this.
+
+Your password is sent to Bambu Lab once to get a token and is **never stored**. The token (valid about three months) is saved in `.obsidian/plugins/bambu-print-sync/data.json` inside your vault, so it travels with your vault sync. No other data goes anywhere: no telemetry, no analytics, no third-party servers.
 
 > [!WARNING]
 > The Bambu Lab cloud API is not public or documented by Bambu Lab. It may change or stop working at any time. If login fails, you can paste a token manually in the settings.
