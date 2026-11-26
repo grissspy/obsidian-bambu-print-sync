@@ -877,7 +877,8 @@ class BambuPrintSync extends Plugin {
       this.app.workspace.on("editor-paste", (evt, editor) => this.onPaste(evt, editor))
     );
 
-    this.addSettingTab(new BambuSettingTab(this.app, this));
+    this.settingTab = new BambuSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     this.app.workspace.onLayoutReady(() => {
       this.maybeOnboard();
@@ -1120,6 +1121,7 @@ class BambuPrintSync extends Plugin {
 
       st.lastSync = Date.now();
       await this.saveSettings();
+      this.refreshSettings();
 
       const deducted = st.autoDeduct ? await this.deductAll(false) : 0;
 
@@ -1458,6 +1460,13 @@ class BambuPrintSync extends Plugin {
     this.settings.token = json.accessToken;
     this.settings.tokenExpires = Date.now() + (Number(json.expiresIn) || 7776000) * 1000;
     await this.saveSettings();
+    this.refreshSettings();
+  }
+
+  /** Redraw the settings tab if it is open, so login state shows at once. */
+  refreshSettings() {
+    const tab = this.settingTab;
+    if (tab && tab.containerEl && tab.containerEl.isConnected) tab.display();
   }
 }
 
