@@ -10,7 +10,10 @@
 "use strict";
 
 const obsidian = require("obsidian");
-const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath, moment } = obsidian;
+const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath, moment, Platform } = obsidian;
+
+const SUPPORT_URL = "https://boosty.to/grispy/donate";
+const PRIMARY_KEY = "bambu-print-sync-primary";
 
 /* ------------------------------------------------------------------ */
 /* i18n                                                                */
@@ -124,6 +127,16 @@ const STRINGS = {
     pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
     openModel: "Open the model",
     plateWord: "plate",
+    notPrimary: "Bambu: cloud sync is off on this device. Turn on “Sync on this device” in the plugin settings.",
+    hDevice: "This device",
+    primary: "Sync on this device",
+    primaryDesc: "Only one device should import from the Bambu cloud, deduct filament and write costs. If you sync your vault (Obsidian Sync, Seafile, iCloud, Syncthing…), turn this on on one computer and off everywhere else, or both will create the same prints and fight over edits. Stored on this device only.",
+    startDelay: "Wait after start, seconds",
+    startDelayDesc: "Gives your vault sync time to download notes from other devices before the first Bambu sync, so no duplicates are created.",
+    dupRemoved: "duplicates moved to trash: {n}",
+    support: "Support the plugin",
+    supportDesc: "If the plugin saves you time, you can support its development.",
+    supportBtn: "Boosty",
     hCost: "Print cost",
     costDesc: "The plugin writes cost_filament, cost_power, cost_wear and cost into each print. Finished prints keep the cost they had; use the recalculate command after changing rates.",
     printerModel: "Printer model",
@@ -246,6 +259,16 @@ const STRINGS = {
     pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
     openModel: "Открыть модель",
     plateWord: "пластина",
+    notPrimary: "Bambu: на этом устройстве синхронизация с облаком выключена. Включи «Синхронизировать на этом устройстве» в настройках плагина.",
+    hDevice: "Это устройство",
+    primary: "Синхронизировать на этом устройстве",
+    primaryDesc: "Импорт из облака Bambu, списание пластика и расчёт стоимости должно делать одно устройство. Если хранилище синхронизируется (Obsidian Sync, Seafile, iCloud, Syncthing…), включи это на одном компьютере и выключи на остальных, иначе они создадут одни и те же печати и будут перезаписывать правки друг друга. Хранится только на этом устройстве.",
+    startDelay: "Ждать после запуска, секунд",
+    startDelayDesc: "Даёт синхронизации хранилища время скачать заметки с других устройств до первой синхронизации с Bambu, чтобы не появились дубли.",
+    dupRemoved: "дублей убрано в корзину: {n}",
+    support: "Поддержать плагин",
+    supportDesc: "Если плагин экономит тебе время, можно поддержать его развитие.",
+    supportBtn: "Boosty",
     hCost: "Стоимость печати",
     costDesc: "Плагин записывает в каждую печать cost_filament, cost_power, cost_wear и cost. Завершённые печати сохраняют свою стоимость; после смены тарифов запусти пересчёт.",
     printerModel: "Модель принтера",
@@ -334,6 +357,7 @@ const DEFAULT_SETTINGS = Object.assign(
     lifetimeH: 4000,
     maintPerHour: 0,
     onboarded: false,
+    startDelaySec: 30,
     lastSync: 0,
   },
   LOCALE_DEFAULTS[LANG]
@@ -837,13 +861,17 @@ class BambuPrintSync extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       this.maybeOnboard();
-      if (this.settings.syncOnStart && this.settings.token) this.sync(true);
+      // Let a vault sync plugin pull notes from other devices first.
+      this.startTimer = window.setTimeout(() => {
+        if (this.settings.syncOnStart && this.settings.token && this.isPrimary()) this.sync(true);
+      }, Math.max(0, num(this.settings.startDelaySec)) * 1000);
     });
     this.restartTimer();
   }
 
   onunload() {
     if (this.timer) window.clearInterval(this.timer);
+    if (this.startTimer) window.clearTimeout(this.startTimer);
   }
 
   async saveSettings() {
@@ -857,7 +885,7 @@ class BambuPrintSync extends Plugin {
     const min = Number(this.settings.intervalMin);
     if (min > 0) {
       this.timer = window.setInterval(() => {
-        if (this.settings.token) this.sync(true);
+        if (this.settings.token && this.isPrimary()) this.sync(true);
       }, min * 60 * 1000);
       this.registerInterval(this.timer);
     }
@@ -967,8 +995,33 @@ class BambuPrintSync extends Plugin {
 
   /* ---------- sync ---------- */
 
+  /** Only one device per synced vault writes cloud data. Kept in this device's local storage. */
+  isPrimary() {
+    let v = null;
+    try {
+      v = this.app.loadLocalStorage ? this.app.loadLocalStorage(PRIMARY_KEY) : null;
+    } catch (e) {
+      v = null;
+    }
+    if (v === "1" || v === true) return true;
+    if (v === "0" || v === false) return false;
+    return !(Platform && Platform.isMobile);
+  }
+
+  setPrimary(on) {
+    try {
+      if (this.app.saveLocalStorage) this.app.saveLocalStorage(PRIMARY_KEY, on ? "1" : "0");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   async sync(quiet = false) {
     if (this.syncing) return;
+    if (!this.isPrimary()) {
+      if (!quiet) new Notice(t("notPrimary"), 8000);
+      return;
+    }
     if (!this.settings.token) {
       new Notice(t("needLogin"));
       return;
@@ -987,7 +1040,25 @@ class BambuPrintSync extends Plugin {
       await this.ensureFolder(st.printsFolder);
       const prints = this.filesIn(st.printsFolder).map((file) => ({ file, fm: this.fm(file) }));
       const byId = new Map();
-      for (const p of prints) if (p.fm.bambu_task_id) byId.set(String(p.fm.bambu_task_id), p.file);
+      // One note per cloud job. A vault sync can deliver a second copy made on another device:
+      // keep the deducted one, else the oldest, and move the rest to the trash.
+      const groups = new Map();
+      for (const p of prints) {
+        if (!p.fm.bambu_task_id) continue;
+        const id = String(p.fm.bambu_task_id);
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id).push(p);
+      }
+      let removed = 0;
+      for (const [id, list] of groups) {
+        const ctime = (p) => (p.file.stat && p.file.stat.ctime) || 0;
+        list.sort((a, b) => (b.fm.spool_deducted ? 1 : 0) - (a.fm.spool_deducted ? 1 : 0) || ctime(a) - ctime(b));
+        byId.set(id, list[0].file);
+        for (const extra of list.slice(1)) {
+          await this.app.fileManager.trashFile(extra.file);
+          removed++;
+        }
+      }
       const used = new Set();
       const spools = this.spoolList();
       const finals = [st.statusDone, st.statusFailed];
@@ -1037,6 +1108,7 @@ class BambuPrintSync extends Plugin {
       if (linked) parts.push(t("linked", { n: linked }));
       if (updated) parts.push(t("updated", { n: updated }));
       if (deducted) parts.push(t("deducted", { n: deducted }));
+      if (removed) parts.push(t("dupRemoved", { n: removed }));
       if (!quiet || parts.length) new Notice(`Bambu: ${parts.length ? parts.join(", ") : t("nothingNew")}`);
     } catch (e) {
       console.error("[bambu-print-sync]", e);
@@ -1097,6 +1169,10 @@ class BambuPrintSync extends Plugin {
   /* ---------- filament deduction ---------- */
 
   async deductAll(manual) {
+    if (!this.isPrimary()) {
+      if (manual) new Notice(t("notPrimary"), 8000);
+      return 0;
+    }
     const st = this.settings;
     const finals = [st.statusDone, st.statusFailed];
     let count = 0;
@@ -1247,6 +1323,7 @@ class BambuPrintSync extends Plugin {
   }
 
   onNoteChanged(file) {
+    if (!this.isPrimary()) return;
     const targets = this.isPrint(file)
       ? [file]
       : this.isSpool(file)
@@ -1276,6 +1353,10 @@ class BambuPrintSync extends Plugin {
   }
 
   async recalcAll(manual) {
+    if (!this.isPrimary()) {
+      if (manual) new Notice(t("notPrimary"), 8000);
+      return 0;
+    }
     let n = 0;
     for (const f of this.filesIn(this.settings.printsFolder)) if (await this.updateCost(f, true)) n++;
     if (manual) new Notice(t("recalcDone", { n }));
@@ -1637,6 +1718,16 @@ class BambuSettingTab extends PluginSettingTab {
         })
       );
 
+    new Setting(containerEl).setName(t("hDevice")).setHeading();
+    new Setting(containerEl)
+      .setName(t("primary"))
+      .setDesc(t("primaryDesc"))
+      .addToggle((c) =>
+        c.setValue(this.plugin.isPrimary()).onChange((v) => {
+          this.plugin.setPrimary(v);
+        })
+      );
+
     new Setting(containerEl).setName(t("hSync")).setHeading();
     const text = (name, key, desc, parse) => {
       const row = new Setting(containerEl).setName(name);
@@ -1665,6 +1756,7 @@ class BambuSettingTab extends PluginSettingTab {
     text(t("limit"), "limit", null, (v) => parseInt(v, 10) || 50);
     toggle(t("onStart"), "syncOnStart");
     text(t("interval"), "intervalMin", t("intervalDesc"), (v) => Math.max(0, parseInt(v, 10) || 0));
+    text(t("startDelay"), "startDelaySec", t("startDelayDesc"), (v) => Math.max(0, parseInt(v, 10) || 0));
     toggle(t("autoDeduct"), "autoDeduct", t("autoDeductDesc"));
 
     new Setting(containerEl).setName(t("hModels")).setHeading();
@@ -1706,6 +1798,11 @@ class BambuSettingTab extends PluginSettingTab {
     text(t("stSpoolEmpty"), "spoolEmpty");
 
     new Setting(containerEl).addButton((b) => b.setCta().setButtonText(t("syncNow")).onClick(() => this.plugin.sync()));
+
+    new Setting(containerEl)
+      .setName(t("support"))
+      .setDesc(t("supportDesc"))
+      .addButton((b) => b.setButtonText(t("supportBtn")).onClick(() => window.open(SUPPORT_URL)));
   }
 }
 

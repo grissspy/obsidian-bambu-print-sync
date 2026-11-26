@@ -7,6 +7,7 @@
   <img alt="Obsidian 1.9+" src="https://img.shields.io/badge/Obsidian-1.9%2B-7c3aed?style=flat-square">
   <img alt="Desktop and mobile" src="https://img.shields.io/badge/desktop%20%26%20mobile-yes-555?style=flat-square">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/github/license/grissspy/obsidian-bambu-print-sync?style=flat-square&color=555"></a>
+  <a href="https://boosty.to/grispy/donate"><img alt="Support on Boosty" src="https://img.shields.io/badge/support-Boosty-f15f2c?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -157,6 +158,17 @@ Paste a model link on its own into any note. The plugin recognises MakerWorld, P
 
 The plugin does not download the model page: grams and time come from the cloud sync once you print, or you fill them in after slicing.
 
+## Using it with a vault sync
+
+Obsidian Sync, Seafile, iCloud, Syncthing and similar tools copy your notes between devices. The plugin is built to work alongside them:
+
+- **One device writes.** Only the device with **Sync on this device** turned on imports from the Bambu cloud, deducts filament and writes costs. Desktops have it on by default, phones off. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Turn it on for exactly one computer.
+- **It waits for your sync.** The first Bambu sync after Obsidian starts is delayed (30 seconds by default) so notes made on other devices arrive first.
+- **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the one already deducted, or the oldest, and moves the other to the trash.
+- **Edits are small.** The plugin only changes properties in the note header, and only when a value actually changes, so the sync tool has little to merge and no edit loops between devices.
+
+Link-to-queue works on every device, since it is something you do by hand.
+
 ## Privacy and network use
 
 This plugin needs a **Bambu Lab account** and talks to the **Bambu Lab cloud** over the internet:
@@ -192,6 +204,10 @@ npm test
 ```
 
 The test runs the sync and deduction logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js` and `manifest.json` to a GitHub release.
+
+## Support
+
+If the plugin saves you time, you can support its development on [Boosty](https://boosty.to/grispy/donate). The **Support** button on the plugin page in Obsidian leads there too.
 
 ## Disclaimer
 

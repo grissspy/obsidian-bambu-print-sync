@@ -46,6 +46,7 @@ const fakeObsidian = {
   Setting: class {},
   Modal: class {},
   moment: { locale: () => "en" },
+  Platform: { isMobile: false },
   normalizePath: (p) => p.replace(/\/+$/, ""),
   requestUrl: async (o) => {
     const r = fixture[o.url.split("?")[0]];
@@ -73,7 +74,10 @@ function add(p, fm) {
   return file;
 }
 const isFolder = (p) => !p.endsWith(".md") && [...files.keys()].some((k) => k.startsWith(p + "/"));
+const local = {};
 const app = {
+  loadLocalStorage: (k) => (k in local ? local[k] : null),
+  saveLocalStorage: (k, v) => { local[k] = v; },
   vault: {
     getMarkdownFiles: () => [...files.values()].map((x) => x.file),
     getAbstractFileByPath: (p) => (files.get(p) ? files.get(p).file : isFolder(p) ? {} : null),
@@ -99,6 +103,7 @@ const app = {
   fileManager: {
     processFrontMatter: async (f, fn) => fn(files.get(f.path).fm),
     generateMarkdownLink: (f) => `[[${f.basename}]]`,
+    trashFile: async (f) => { files.delete(f.path); },
   },
   workspace: { on: () => ({}), onLayoutReady() {}, getLeaf: () => ({ openFile: async () => {} }) },
 };
@@ -113,6 +118,9 @@ add(S + "PETG White.md", { type: "spool", material: "PETG", color_hex: "FFFFFF",
 add(S + "PLA Old.md", { type: "spool", material: "PLA", color_hex: "000000", weight_g: 1000, remaining_g: 0, spool_status: ru.spoolEmpty });
 add(P + "Shelf bracket.md", { type: "print", status: ru.statusPlanned, grams: 42 });
 add(P + "Manual.md", { type: "print", status: ru.statusDone, grams: 10, spool: "[[PETG White]]" });
+// The same cloud job delivered twice by a vault sync from two devices.
+add(P + "Old box copy A.md", { type: "print", status: ru.statusDone, bambu_task_id: "99", grams: 5, spool_deducted: true });
+add(P + "Old box copy B.md", { type: "print", status: ru.statusDone, bambu_task_id: "99", grams: 5 });
 
 const now = Date.now();
 fixture = {
@@ -160,6 +168,13 @@ fixture = {
   await plugin.onload();
   Object.assign(plugin.settings, ru, { token: "x", printsFolder: "3D/Prints", spoolsFolder: "3D/Spools" });
 
+  // A secondary device does not touch the cloud or the notes.
+  plugin.setPrimary(false);
+  await plugin.sync(true);
+  assert.equal(files.get(P + "Shelf bracket.md").fm.bambu_task_id, undefined, "secondary device does not sync");
+  assert.equal(await plugin.deductAll(false), 0);
+  plugin.setPrimary(true);
+
   // Pasting a model link into any note queues it; pasting it again does not duplicate.
   const paste = (text) => {
     let prevented = false;
@@ -179,6 +194,8 @@ fixture = {
 
   await plugin.sync();
   const get = (n) => [...files.values()].find((x) => x.file.basename.startsWith(n)).fm;
+
+  assert.ok(files.has(P + "Old box copy A.md") && !files.has(P + "Old box copy B.md"), "duplicate removed, deducted copy kept");
 
   const plan = get("Shelf bracket");
   assert.equal(plan.bambu_task_id, "3", "planned note is linked to the cloud job");
@@ -218,7 +235,7 @@ fixture = {
 
   await plugin.sync();
   assert.equal(get("PLA Black").remaining_g, 870 - 42.4 - 30, "no double deduction");
-  assert.equal([...files.keys()].filter((k) => k.startsWith(P)).length, 5, "no duplicate notes");
+  assert.equal([...files.keys()].filter((k) => k.startsWith(P)).length, 6, "no duplicate notes");
 
   console.log("notices:", notices.join(" | "));
   console.log("All tests passed.");
