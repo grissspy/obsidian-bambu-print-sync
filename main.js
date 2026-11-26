@@ -2099,19 +2099,7 @@ class BambuPrintSync extends Plugin {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       const baseName = basePath.split("/").pop();
-      const spoolsView = LANG === "ru" ? "Катушки" : "Spools";
-      const body = [
-        "```bambu-print-sync",
-        "```",
-        "",
-        `![[${baseName}]]`,
-        "",
-        `## ${spoolsView}`,
-        "",
-        `![[${baseName}#${spoolsView}]]`,
-        "",
-      ].join("\n");
-      file = await this.app.vault.create(path, body);
+      file = await this.app.vault.create(path, "```bambu-print-sync\n```\n\n![[" + baseName + "]]\n");
       new Notice(t("dashboardCreated", { path }));
     }
     if (open && file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);
