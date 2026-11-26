@@ -110,6 +110,19 @@ const STRINGS = {
     baseCreated: "Bambu: created {path}",
     baseExists: "Bambu: {path} already exists, left as is",
     newPrintName: "New print",
+    cmdAddLink: "Add model to queue by link",
+    addLinkTitle: "Add a model to the queue",
+    addLinkHint: "Paste a link to a model on MakerWorld, Printables, Thingiverse or Cults3D.",
+    add: "Add",
+    queued: "Bambu: “{title}” added to the queue",
+    alreadyQueued: "Bambu: “{title}” is already in the queue",
+    notModelLink: "This does not look like a model link.",
+    hModels: "Model links",
+    pasteToQueue: "Queue models from pasted links",
+    pasteToQueueDesc: "When you paste a MakerWorld, Printables, Thingiverse or Cults3D model link into any note, a planned print is created.",
+    pasteReplace: "Replace the pasted link with a link to the print note",
+    pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
+    openModel: "Open the model",
     newSpoolName: "New spool",
   },
   ru: {
@@ -196,6 +209,19 @@ const STRINGS = {
     baseCreated: "Bambu: создан файл {path}",
     baseExists: "Bambu: {path} уже есть, оставил как есть",
     newPrintName: "Новая печать",
+    cmdAddLink: "Добавить модель в очередь по ссылке",
+    addLinkTitle: "Добавить модель в очередь",
+    addLinkHint: "Вставь ссылку на модель с MakerWorld, Printables, Thingiverse или Cults3D.",
+    add: "Добавить",
+    queued: "Bambu: «{title}» добавлена в очередь",
+    alreadyQueued: "Bambu: «{title}» уже в очереди",
+    notModelLink: "Это не похоже на ссылку на модель.",
+    hModels: "Ссылки на модели",
+    pasteToQueue: "Ставить в очередь по вставленной ссылке",
+    pasteToQueueDesc: "Когда вставляешь в любую заметку ссылку на модель с MakerWorld, Printables, Thingiverse или Cults3D, создаётся запланированная печать.",
+    pasteReplace: "Заменять вставленную ссылку ссылкой на заметку печати",
+    pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
+    openModel: "Открыть модель",
     newSpoolName: "Новая катушка",
   },
 };
@@ -251,6 +277,8 @@ const DEFAULT_SETTINGS = Object.assign(
     syncOnStart: true,
     intervalMin: 30,
     autoDeduct: true,
+    pasteToQueue: true,
+    pasteReplace: false,
     lastSync: 0,
   },
   LOCALE_DEFAULTS[LANG]
@@ -343,6 +371,7 @@ function taskToRecord(task, st, fallbackTitle) {
 
   return {
     id: String(task.id),
+    designId: task.designId && String(task.designId) !== "0" ? String(task.designId) : "",
     title: cleanTitle(task, fallbackTitle),
     state,
     status,
@@ -396,6 +425,40 @@ function q(s) {
   return JSON.stringify(String(s));
 }
 
+function slugToTitle(slug) {
+  let s = String(slug || "");
+  try {
+    s = decodeURIComponent(s);
+  } catch (e) {
+    /* keep as is */
+  }
+  s = s.replace(/[-_+]+/g, " ").replace(/\s+/g, " ").trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+}
+
+const MODEL_SITES = [
+  { site: "MakerWorld", re: /^https?:\/\/(?:www\.)?makerworld\.com(?:\.cn)?\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?models\/(\d+)(?:-([^/?#]+))?/i },
+  { site: "Printables", re: /^https?:\/\/(?:www\.)?printables\.com\/(?:[a-z]{2}\/)?model\/(\d+)(?:-([^/?#]+))?/i },
+  { site: "Thingiverse", re: /^https?:\/\/(?:www\.)?thingiverse\.com\/thing:(\d+)()/i },
+  { site: "Cults3D", re: /^https?:\/\/(?:www\.)?cults3d\.com\/[a-z]{2}\/(?:3d-model|modele-3d|modelo-3d)\/[^/]+\/([^/?#]+)()/i },
+];
+
+/** Recognise a model page link. Returns null for anything else. */
+function parseModelUrl(text) {
+  const url = String(text || "").trim();
+  if (!url || /\s/.test(url)) return null;
+  for (const { site, re } of MODEL_SITES) {
+    const m = url.match(re);
+    if (!m) continue;
+    const isCults = site === "Cults3D";
+    const id = m[1];
+    const title = slugToTitle(isCults ? m[1] : m[2]) || `${site} ${id}`;
+    const profile = url.match(/#profileId-(\d+)/i);
+    return { site, id, title, url, profileId: profile ? profile[1] : "" };
+  }
+  return null;
+}
+
 /** The Bases file for the tracker. */
 function buildBase(root, st, lang) {
   const L = lang === "ru"
@@ -403,12 +466,12 @@ function buildBase(root, st, lang) {
         status: "Статус", spool: "Катушка", grams: "Граммы", printed: "Дата печати", hours: "Часы", time: "Время",
         cost: "Стоимость", priceKg: "Цена за кг", monthCol: "Месяц", usage: "Расход", material: "Материал",
         color: "Цвет", brand: "Бренд", remaining: "Остаток, г", spoolStatus: "Состояние", left: "Остаток",
-        warn: "Внимание", low: "⚠️ заканчивается", noDate: "без даты", h: "ч ", m: "м", g: " г" }
+        warn: "Внимание", low: "⚠️ заканчивается", noDate: "без даты", h: "ч ", m: "м", g: " г", model: "Модель", digits: 0 }
     : { queue: "Queue", all: "All prints", month: "By month", failed: "Failed", spools: "Spools",
         status: "Status", spool: "Spool", grams: "Grams", printed: "Printed", hours: "Hours", time: "Time",
         cost: "Cost", priceKg: "Price per kg", monthCol: "Month", usage: "Usage", material: "Material",
         color: "Colour", brand: "Brand", remaining: "Remaining, g", spoolStatus: "State", left: "Left",
-        warn: "Attention", low: "⚠️ running low", noDate: "no date", h: "h ", m: "m", g: " g" };
+        warn: "Attention", low: "⚠️ running low", noDate: "no date", h: "h ", m: "m", g: " g", model: "Model", digits: 2 };
   return `filters:
   and:
     - file.inFolder(${q(root)})
@@ -416,9 +479,9 @@ formulas:
   hours: (if(time_h, time_h, 0) + if(time_m, time_m, 0) / 60).round(1)
   time: if(time_h || time_m, if(time_h, time_h, 0) + ${q(L.h)} + if(time_m, time_m, 0) + ${q(L.m)}, "")
   price_kg: if(price_kg, price_kg, if(spool, (spool.asFile().properties.price / spool.asFile().properties.weight_g * 1000).round(0), ""))
-  cost: if(grams && formula.price_kg, (grams * formula.price_kg / 1000).round(0), "")
+  cost: if(grams && formula.price_kg, (grams * formula.price_kg / 1000).round(${L.digits}), "")
   month: if(printed, date(printed).format("YYYY-MM"), ${q(L.noDate)})
-  card: if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "") + if(formula.cost, "  ·  " + formula.cost, "")
+  card: if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "")
   spool_price_kg: if(price && weight_g, (price / weight_g * 1000).round(0), "")
   remaining_pct: if(remaining_g && weight_g, (remaining_g / weight_g * 100).round(0) + "%", "")
   low: if(remaining_g && remaining_g < 150 && spool_status != ${q(st.spoolEmpty)}, ${q(L.low)}, "")
@@ -459,6 +522,8 @@ properties:
     displayName: ${q(L.left)}
   formula.low:
     displayName: ${q(L.warn)}
+  note.model_url:
+    displayName: ${q(L.model)}
 views:
   - type: kanban
     name: ${q(L.queue)}
@@ -476,6 +541,7 @@ views:
     order:
       - file.name
       - formula.card
+      - model_url
       - spool
   - type: table
     name: ${q(L.all)}
@@ -616,6 +682,11 @@ class BambuPrintSync extends Plugin {
     this.addCommand({ id: "new-print", name: t("cmdNewPrint"), callback: () => this.newNote("print") });
     this.addCommand({ id: "new-spool", name: t("cmdNewSpool"), callback: () => this.newNote("spool") });
     this.addCommand({ id: "create-base", name: t("cmdBase"), callback: () => this.createBase() });
+    this.addCommand({ id: "add-link", name: t("cmdAddLink"), callback: () => new AddLinkModal(this.app, this).open() });
+
+    this.registerEvent(
+      this.app.workspace.on("editor-paste", (evt, editor) => this.onPaste(evt, editor))
+    );
 
     this.addSettingTab(new BambuSettingTab(this.app, this));
 
@@ -790,14 +861,13 @@ class BambuPrintSync extends Plugin {
           continue;
         }
         const want = normalizeName(rec.title);
-        const plan = prints.find(
-          (p) =>
-            !used.has(p.file.path) &&
-            !p.fm.bambu_task_id &&
-            p.fm.type === "print" &&
-            open.includes(p.fm.status) &&
-            normalizeName(p.fm.bambu_title || p.file.basename) === want
+        const candidates = prints.filter(
+          (p) => !used.has(p.file.path) && !p.fm.bambu_task_id && p.fm.type === "print" && open.includes(p.fm.status)
         );
+        // A MakerWorld model ID is exact; the name is the fallback.
+        const plan =
+          (rec.designId && candidates.find((p) => String(p.fm.makerworld_id || "") === rec.designId)) ||
+          candidates.find((p) => normalizeName(p.fm.bambu_title || p.file.basename) === want);
         if (plan) {
           used.add(plan.file.path);
           await this.writeRecord(plan.file, rec, spools, false);
@@ -932,6 +1002,82 @@ class BambuPrintSync extends Plugin {
     const body = kind === "print" ? `## ${t("notes")}\n` : spoolPrintsBlock(LANG);
     const file = await this.app.vault.create(path, ["---", ...fmLines, "---", "", body].join("\n"));
     await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  /* ---------- model links ---------- */
+
+  onPaste(evt, editor) {
+    if (!this.settings.pasteToQueue || evt.defaultPrevented || !evt.clipboardData) return;
+    const text = evt.clipboardData.getData("text/plain");
+    const model = parseModelUrl(text);
+    if (!model) return;
+    if (this.settings.pasteReplace) {
+      evt.preventDefault();
+      this.addModel(model).then((file) => {
+        if (file) editor.replaceSelection(this.app.fileManager.generateMarkdownLink(file, "")); else editor.replaceSelection(text);
+      });
+    } else {
+      this.addModel(model);
+    }
+  }
+
+  findQueued(model) {
+    const st = this.settings;
+    const open = [st.statusPlanned, st.statusPrinting];
+    return this.filesIn(st.printsFolder).find((f) => {
+      const fm = this.fm(f);
+      if (fm.type !== "print" || !open.includes(fm.status)) return false;
+      const same = parseModelUrl(fm.model_url);
+      return same && same.site === model.site && same.id === model.id;
+    });
+  }
+
+  /** Create a planned print for a model link, or return the one already queued. */
+  async addModel(model) {
+    try {
+      const existing = this.findQueued(model);
+      if (existing) {
+        new Notice(t("alreadyQueued", { title: existing.basename }));
+        return existing;
+      }
+      const st = this.settings;
+      await this.ensureFolder(st.printsFolder);
+      const path = this.uniquePath(st.printsFolder, model.title);
+      const today = localDate(new Date().toISOString());
+      const lines = [
+        "---",
+        "type: print",
+        `status: ${q(st.statusPlanned)}`,
+        `model_url: ${q(model.url)}`,
+        `model_site: ${model.site}`,
+      ];
+      if (model.site === "MakerWorld") lines.push(`makerworld_id: ${q(model.id)}`);
+      if (model.profileId) lines.push(`makerworld_profile: ${q(model.profileId)}`);
+      lines.push(
+        `bambu_title: ${q(model.title)}`,
+        'spool: ""',
+        "grams:",
+        "time_h:",
+        "time_m:",
+        "plate: 1",
+        "printed:",
+        `created: ${today}`,
+        "tags:",
+        "  - 3d-print",
+        "---",
+        `[${t("openModel")} · ${model.site}](${model.url})`,
+        "",
+        `## ${t("notes")}`,
+        ""
+      );
+      const file = await this.app.vault.create(path, lines.join("\n"));
+      new Notice(t("queued", { title: file.basename }));
+      return file;
+    } catch (e) {
+      console.error("[bambu-print-sync]", e);
+      new Notice(`Bambu: ${e.message}`, 8000);
+      return null;
+    }
   }
 
   async createBase() {
@@ -1114,6 +1260,48 @@ class LoginModal extends Modal {
 }
 
 /* ------------------------------------------------------------------ */
+/* add-by-link modal                                                   */
+/* ------------------------------------------------------------------ */
+
+class AddLinkModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    this.setTitle ? this.setTitle(t("addLinkTitle")) : contentEl.createEl("h3", { text: t("addLinkTitle") });
+    contentEl.createEl("p", { text: t("addLinkHint"), cls: "setting-item-description" });
+    const msg = contentEl.createEl("p");
+    let url = "";
+    const submit = async () => {
+      const model = parseModelUrl(url);
+      if (!model) {
+        msg.setText(t("notModelLink"));
+        msg.addClass("mod-warning");
+        return;
+      }
+      const file = await this.plugin.addModel(model);
+      if (file) this.close();
+    };
+    new Setting(contentEl).addText((c) => {
+      c.setPlaceholder("https://makerworld.com/…").onChange((v) => (url = v.trim()));
+      c.inputEl.style.width = "100%";
+      c.inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") submit();
+      });
+      window.setTimeout(() => c.inputEl.focus(), 0);
+    });
+    new Setting(contentEl).addButton((b) => b.setCta().setButtonText(t("add")).onClick(submit));
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* settings tab                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -1225,6 +1413,10 @@ class BambuSettingTab extends PluginSettingTab {
     text(t("interval"), "intervalMin", t("intervalDesc"), (v) => Math.max(0, parseInt(v, 10) || 0));
     toggle(t("autoDeduct"), "autoDeduct", t("autoDeductDesc"));
 
+    new Setting(containerEl).setName(t("hModels")).setHeading();
+    toggle(t("pasteToQueue"), "pasteToQueue", t("pasteToQueueDesc"));
+    toggle(t("pasteReplace"), "pasteReplace", t("pasteReplaceDesc"));
+
     new Setting(containerEl).setName(t("hStatuses")).setDesc(t("statusesDesc")).setHeading();
     text(t("stPlanned"), "statusPlanned");
     text(t("stPrinting"), "statusPrinting");
@@ -1238,4 +1430,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, LOCALE_DEFAULTS };
+module.exports._test = { taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, LOCALE_DEFAULTS };

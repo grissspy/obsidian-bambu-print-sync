@@ -36,6 +36,7 @@ const fakeObsidian = {
     addCommand() {}
     addSettingTab() {}
     registerInterval() {}
+    registerEvent() {}
     async loadData() {
       return {};
     }
@@ -61,7 +62,7 @@ require.cache.obsidian = { id: "obsidian", filename: "obsidian", loaded: true, e
 global.window = { setInterval: () => 1, clearInterval() {} };
 
 const Plugin = require(path.join(__dirname, "..", "main.js"));
-const { LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase } = Plugin._test;
+const { LOCALE_DEFAULTS, normalizeName, parseUsage, buildBase, parseModelUrl } = Plugin._test;
 
 /* ---------- fake vault ---------- */
 
@@ -77,7 +78,15 @@ const app = {
     getMarkdownFiles: () => [...files.values()].map((x) => x.file),
     getAbstractFileByPath: (p) => (files.get(p) ? files.get(p).file : isFolder(p) ? {} : null),
     createFolder: async () => {},
-    create: async (p) => add(p, { type: "print" }),
+    create: async (p, content) => {
+      const fm = {};
+      const m = String(content).match(/^---\n([\s\S]*?)\n---/);
+      if (m) for (const line of m[1].split("\n")) {
+        const kv = line.match(/^([a-z_]+):\s*(.*)$/);
+        if (kv && kv[2] !== "") fm[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1");
+      }
+      return add(p, fm);
+    },
   },
   metadataCache: {
     getFileCache: (f) => ({ frontmatter: files.get(f.path).fm }),
@@ -86,8 +95,11 @@ const app = {
       return hit ? hit.file : null;
     },
   },
-  fileManager: { processFrontMatter: async (f, fn) => fn(files.get(f.path).fm) },
-  workspace: { onLayoutReady() {}, getLeaf: () => ({ openFile: async () => {} }) },
+  fileManager: {
+    processFrontMatter: async (f, fn) => fn(files.get(f.path).fm),
+    generateMarkdownLink: (f) => `[[${f.basename}]]`,
+  },
+  workspace: { on: () => ({}), onLayoutReady() {}, getLeaf: () => ({ openFile: async () => {} }) },
 };
 
 /* ---------- data ---------- */
@@ -112,6 +124,7 @@ fixture = {
           { filamentType: "PLA", sourceColor: "000000FF", weight: 60 },
           { filamentType: "PETG", sourceColor: "FFFFFFFF", weight: 40 },
         ] },
+      { id: 4, title: "Untitled", designId: 777001, designTitle: "Cable clip (remix)", status: 2, startTime: "2026-11-26T14:00:00Z", endTime: "2026-11-26T14:30:00Z", costTime: 1800, weight: 6, amsDetailMapping: [] },
       { id: 3, title: "Untitled", designTitle: "Shelf_bracket.3mf", status: 2, startTime: "2026-11-26T10:00:00Z", endTime: "2026-11-26T12:40:00Z", costTime: 9300, weight: 42.4, plateIndex: 1,
         amsDetailMapping: [{ filamentType: "PLA", sourceColor: "000000FF", weight: 42.4 }] },
     ],
@@ -125,9 +138,34 @@ fixture = {
   assert.deepEqual(parseUsage(["[[A|x]]: 1,5", "junk"]), [{ link: "A", grams: 1.5 }]);
   assert.ok(buildBase("3D", ru, "ru").includes('- "Провал"'));
 
+  const mw = parseModelUrl("https://makerworld.com/en/models/777001-cable-clip-for-desk#profileId-55");
+  assert.deepEqual([mw.site, mw.id, mw.title, mw.profileId], ["MakerWorld", "777001", "Cable clip for desk", "55"]);
+  assert.equal(parseModelUrl("https://www.printables.com/model/123456-shelf-bracket/files").title, "Shelf bracket");
+  assert.equal(parseModelUrl("https://www.thingiverse.com/thing:42").title, "Thingiverse 42");
+  assert.equal(parseModelUrl("https://cults3d.com/en/3d-model/home/desk-hook").title, "Desk hook");
+  assert.equal(parseModelUrl("https://example.com/models/1"), null);
+  assert.equal(parseModelUrl("see https://makerworld.com/en/models/1-a"), null);
+
   const plugin = new Plugin(app);
   await plugin.onload();
   Object.assign(plugin.settings, ru, { token: "x", printsFolder: "3D/Prints", spoolsFolder: "3D/Spools" });
+
+  // Pasting a model link into any note queues it; pasting it again does not duplicate.
+  const paste = (text) => {
+    let prevented = false;
+    const evt = { defaultPrevented: false, clipboardData: { getData: () => text }, preventDefault() { prevented = true; } };
+    plugin.onPaste(evt, { replaceSelection() {} });
+    return prevented;
+  };
+  assert.equal(paste("https://makerworld.com/en/models/777001-cable-clip-for-desk"), false, "URL stays in the note");
+  await new Promise((r) => setTimeout(r, 10));
+  paste("https://makerworld.com/en/models/777001-cable-clip-for-desk#profileId-9");
+  await new Promise((r) => setTimeout(r, 10));
+  paste("just some text");
+  const queued = [...files.keys()].filter((k) => k.startsWith(P + "Cable clip"));
+  assert.equal(queued.length, 1, "one card per model");
+  assert.equal(files.get(queued[0]).fm.status, ru.statusPlanned);
+  assert.equal(files.get(queued[0]).fm.makerworld_id, "777001");
 
   await plugin.sync();
   const get = (n) => [...files.values()].find((x) => x.file.basename.startsWith(n)).fm;
@@ -155,9 +193,13 @@ fixture = {
   assert.equal(get("PETG White").remaining_g, 500 - 10 - 20);
   assert.equal(get("PLA Old").remaining_g, 0);
 
+  const clip = get("Cable clip");
+  assert.equal(clip.bambu_task_id, "4", "linked by MakerWorld model ID although the names differ");
+  assert.equal(clip.status, ru.statusDone);
+
   await plugin.sync();
   assert.equal(get("PLA Black").remaining_g, 870 - 42.4 - 30, "no double deduction");
-  assert.equal([...files.keys()].filter((k) => k.startsWith(P)).length, 4, "no duplicate notes");
+  assert.equal([...files.keys()].filter((k) => k.startsWith(P)).length, 5, "no duplicate notes");
 
   console.log("notices:", notices.join(" | "));
   console.log("All tests passed.");

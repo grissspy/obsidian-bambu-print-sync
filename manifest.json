@@ -1,7 +1,7 @@
 {
   "id": "bambu-print-sync",
   "name": "Bambu Print Sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.9.0",
   "description": "Plan 3D prints, import print history from the Bambu Lab cloud, and track filament spools and cost with Bases.",
   "author": "grissspy",

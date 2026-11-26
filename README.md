@@ -22,12 +22,30 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | | |
 |---|---|
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
+| 📎 **Queue from a link** | Paste a MakerWorld, Printables, Thingiverse or Cults3D link into any note and a planned print appears in the queue. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
-| 🔗 **Plan ↔ fact** | A job is linked to the planned note with the same name instead of creating a duplicate. |
+| 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
 | 🧵 **Spools** | Finds the spool by material and AMS colour, splits multi-colour prints across spools, and deducts grams once per print. |
 | 💸 **Cost** | Price per kg comes from the spool note; Bases adds up grams, hours and money per month. |
 | ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job; the plugin scales it by how far the job got and marks it as an estimate. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
+
+## Screenshots
+
+<p align="center"><img src="assets/screenshots/queue.png" alt="Queue board: planned, printing, done and failed prints" width="100%"></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/month.png" alt="Grams, hours and cost by month"><br><sub><b>By month</b>: grams, hours and cost per month.</sub></td>
+    <td width="50%"><img src="assets/screenshots/spool.png" alt="Spool note with the prints made from it"><br><sub><b>Spool note</b>: remaining filament and every print made from it.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/spools.png" alt="Spools table with remaining filament"><br><sub><b>Spools</b>: what is left, price per kg, low-stock warning.</sub></td>
+    <td width="50%"><img src="assets/screenshots/link.png" alt="Print note created from a MakerWorld link"><br><sub><b>From a link</b>: a planned print created by pasting a MakerWorld URL.</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots use a demo vault with sample data.</sub>
 
 ## How it works
 
@@ -53,8 +71,9 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 2. Open the plugin settings, click **Log in** and enter your Bambu Lab email and password. If Bambu sends a code by email, the plugin asks for it.
 3. Set **Import prints since** to today if you do not want your whole history.
 4. Run **Create tracker base** from the command palette. It writes a `.base` file with five views next to your prints folder.
-5. Add your spools with **New spool note**, filling `material`, `color_hex`, `price` and `weight_g`.
-6. Click the printer icon in the ribbon, or wait for the automatic sync.
+5. Queue a model by pasting its MakerWorld or Printables link into any note, or run **Add model to queue by link**.
+6. Add your spools with **New spool note**, filling `material`, `color_hex`, `price` and `weight_g`.
+7. Click the printer icon in the ribbon, or wait for the automatic sync.
 
 ### Commands
 
@@ -62,6 +81,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 |---|---|
 | Sync prints from Bambu cloud | Imports new jobs, updates running ones, then deducts filament. |
 | Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
+| Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
 | New print note / New spool note | Creates a note with the right properties in the configured folder. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed and Spools views. |
 | Log in to Bambu account | Opens the login window. |
@@ -82,6 +102,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `filaments` | `PLA #000000 — 42.4 g` | sync |
 | `usage` | `"[[PLA Basic Black]]: 30"` | sync, for multi-colour prints |
 | `grams_estimated` | `true` | sync, for failed prints |
+| `model_url`, `model_site`, `makerworld_id` | `https://makerworld.com/…` | link paste |
 | `bambu_task_id`, `bambu_title`, `printer`, `time_est_min`, `source` | | sync |
 | `spool_deducted` | `true` | plugin, after deducting |
 | `price_kg` | `1990` | you, optional override of the spool price |
@@ -104,7 +125,13 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 ### Matching a job to a planned note
 
-A planned or printing note is linked when its name matches the job name after both are normalised: lower case, without `.3mf`, `plate N`, underscores and dashes. `Shelf_bracket.3mf` matches a note called `Shelf bracket`. If your note has another name, put the cloud name in `bambu_title`.
+A planned or printing note created from a MakerWorld link is linked by the model ID, which is exact. Otherwise a note is linked when its name matches the job name after both are normalised: lower case, without `.3mf`, `plate N`, underscores and dashes. `Shelf_bracket.3mf` matches a note called `Shelf bracket`. If your note has another name, put the cloud name in `bambu_title`.
+
+### Queue from a link
+
+Paste a model link on its own into any note. The plugin recognises MakerWorld, Printables, Thingiverse and Cults3D pages, takes the model name from the URL and creates a planned print with the link. The URL stays where you pasted it; turn on *Replace the pasted link* to get a link to the print note instead. Pasting the same model again does not create a second card while the first is still queued.
+
+The plugin does not download the model page: grams and time come from the cloud sync once you print, or you fill them in after slicing.
 
 ## Privacy and network use
 
