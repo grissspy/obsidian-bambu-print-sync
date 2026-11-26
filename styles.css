@@ -1,0 +1,13 @@
+/* Bambu Print Sync */
+
+/* Button row from a ```bambu-print-sync``` block, above the embedded tracker. */
+.bambu-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+/* Link field in the "Add a model to the queue" window. */
+.bambu-link-input {
+  width: 100%;
+}

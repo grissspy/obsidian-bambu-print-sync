@@ -71,7 +71,7 @@ flowchart LR
 
 ## Быстрый старт
 
-1. Установи плагин (Сторонние плагины → Обзор → *Bambu Print Sync*) или положи `main.js` и `manifest.json` из [последнего релиза](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) в `.obsidian/plugins/bambu-print-sync/`.
+1. Установи плагин (Сторонние плагины → Обзор → *Bambu Print Sync*) или положи `main.js`, `manifest.json` и `styles.css` из [последнего релиза](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) в `.obsidian/plugins/bambu-print-sync/`.
 2. В настройках плагина нажми **Войти** и введи email и пароль Bambu Lab. Если Bambu пришлёт код на почту, плагин его спросит.
 3. При первом запуске плагин предложит создать папки печатей и катушек, базу учёта (`База печатей.base`) и заметку **«Панель печати»**: сверху кнопки, под ними доска. Если отказался, потом есть команда **«Создать панель печати»**.
 4. Укажи **Импортировать печати начиная с** сегодняшней датой, если не нужна вся история, и заполни раздел **Стоимость печати** (ниже).
@@ -218,7 +218,7 @@ Obsidian Sync, Seafile, iCloud, Syncthing и похожие инструмент
 npm test
 ```
 
-Тест прогоняет синхронизацию и списание на поддельном хранилище и поддельном облаке. Для релиза подними `version` в `manifest.json` и `versions.json` и запушь тег с тем же номером: workflow сам приложит `main.js` и `manifest.json` к релизу на GitHub.
+Тест прогоняет синхронизацию и списание на поддельном хранилище и поддельном облаке. Для релиза подними `version` в `manifest.json` и `versions.json` и запушь тег с тем же номером: workflow сам приложит `main.js`, `manifest.json` и `styles.css` к релизу на GitHub.
 
 ## Поддержать
 

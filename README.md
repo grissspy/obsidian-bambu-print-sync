@@ -71,7 +71,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 ## Quick start
 
-1. Install the plugin (Community plugins → Browse → *Bambu Print Sync*), or put `main.js` and `manifest.json` from the [latest release](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) into `.obsidian/plugins/bambu-print-sync/`.
+1. Install the plugin (Community plugins → Browse → *Bambu Print Sync*), or put `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) into `.obsidian/plugins/bambu-print-sync/`.
 2. Open the plugin settings, click **Log in** and enter your Bambu Lab email and password. If Bambu sends a code by email, the plugin asks for it.
 3. On first start the plugin offers to create the prints and spools folders, the tracker base (`Print tracker.base`) and the **Print dashboard** note: buttons on top, the board below. Skipped it? Run **Create print dashboard** later.
 4. Set **Import prints since** to today if you do not want your whole history, and fill in the **Print cost** section (see below).
@@ -218,7 +218,7 @@ The plugin is plain JavaScript with no build step: `main.js` is what Obsidian lo
 npm test
 ```
 
-The test runs the sync and deduction logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js` and `manifest.json` to a GitHub release.
+The test runs the sync and deduction logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
 
 ## Support
 

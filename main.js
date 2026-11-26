@@ -1576,9 +1576,6 @@ class BambuPrintSync extends Plugin {
 
   renderButtons(el) {
     const bar = el.createDiv({ cls: "bambu-buttons" });
-    bar.style.display = "flex";
-    bar.style.flexWrap = "wrap";
-    bar.style.gap = "8px";
     const btn = (icon, label, cta, fn) => {
       const b = bar.createEl("button", { text: `${icon} ${label}` });
       if (cta) b.addClass("mod-cta");
@@ -1864,7 +1861,7 @@ class AddLinkModal extends Modal {
     };
     new Setting(contentEl).addText((c) => {
       c.setPlaceholder("https://makerworld.com/…").onChange((v) => (url = v.trim()));
-      c.inputEl.style.width = "100%";
+      c.inputEl.addClass("bambu-link-input");
       c.inputEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter") submit();
       });
