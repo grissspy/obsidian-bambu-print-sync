@@ -162,7 +162,7 @@ The plugin does not download the model page: grams and time come from the cloud 
 
 Obsidian Sync, Seafile, iCloud, Syncthing and similar tools copy your notes between devices. The plugin is built to work alongside them:
 
-- **One device writes.** Only the device with **Sync on this device** turned on imports from the Bambu cloud, deducts filament and writes costs. Desktops have it on by default, phones off. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Turn it on for exactly one computer.
+- **One device writes.** Only the **main device** imports from the Bambu cloud, deducts filament and writes costs. The switch is the first item in the plugin settings, and there is also a command, *Make this device the main one*. Desktops are main by default, phones are not. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Make exactly one device the main one; a phone works too, but it only syncs while Obsidian is open.
 - **It waits for your sync.** The first Bambu sync after Obsidian starts is delayed (30 seconds by default) so notes made on other devices arrive first.
 - **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the one already deducted, or the oldest, and moves the other to the trash.
 - **Edits are small.** The plugin only changes properties in the note header, and only when a value actually changes, so the sync tool has little to merge and no edit loops between devices.

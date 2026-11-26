@@ -127,9 +127,14 @@ const STRINGS = {
     pasteReplaceDesc: "Off: the URL stays as pasted and the card is created in the background.",
     openModel: "Open the model",
     plateWord: "plate",
-    notPrimary: "Bambu: cloud sync is off on this device. Turn on “Sync on this device” in the plugin settings.",
-    hDevice: "This device",
-    primary: "Sync on this device",
+    notPrimary: "Bambu: cloud sync is off on this device. Turn on “Main device” at the top of the plugin settings.",
+    hDevice: "Main device",
+    primary: "Main device: this one",
+    primaryOn: "✅ This device is the main one: it imports prints from the cloud, deducts filament and writes costs.",
+    primaryOff: "⏸ This device is secondary: it only shows notes that arrive from the main device.",
+    cmdPrimary: "Make this device the main one (on/off)",
+    nowPrimary: "Bambu: this device is now the main one.",
+    nowSecondary: "Bambu: this device is now secondary.",
     primaryDesc: "Only one device should import from the Bambu cloud, deduct filament and write costs. If you sync your vault (Obsidian Sync, Seafile, iCloud, Syncthing…), turn this on on one computer and off everywhere else, or both will create the same prints and fight over edits. Stored on this device only.",
     startDelay: "Wait after start, seconds",
     startDelayDesc: "Gives your vault sync time to download notes from other devices before the first Bambu sync, so no duplicates are created.",
@@ -259,9 +264,14 @@ const STRINGS = {
     pasteReplaceDesc: "Выключено: ссылка остаётся как есть, карточка создаётся в фоне.",
     openModel: "Открыть модель",
     plateWord: "пластина",
-    notPrimary: "Bambu: на этом устройстве синхронизация с облаком выключена. Включи «Синхронизировать на этом устройстве» в настройках плагина.",
-    hDevice: "Это устройство",
-    primary: "Синхронизировать на этом устройстве",
+    notPrimary: "Bambu: на этом устройстве синхронизация с облаком выключена. Включи «Основное устройство» вверху настроек плагина.",
+    hDevice: "Основное устройство",
+    primary: "Основное устройство — это",
+    primaryOn: "✅ Это устройство основное: импортирует печати из облака, списывает пластик и считает стоимость.",
+    primaryOff: "⏸ Это устройство не основное: только показывает заметки, которые приходят с основного.",
+    cmdPrimary: "Сделать это устройство основным (вкл/выкл)",
+    nowPrimary: "Bambu: это устройство теперь основное.",
+    nowSecondary: "Bambu: это устройство теперь не основное.",
     primaryDesc: "Импорт из облака Bambu, списание пластика и расчёт стоимости должно делать одно устройство. Если хранилище синхронизируется (Obsidian Sync, Seafile, iCloud, Syncthing…), включи это на одном компьютере и выключи на остальных, иначе они создадут одни и те же печати и будут перезаписывать правки друг друга. Хранится только на этом устройстве.",
     startDelay: "Ждать после запуска, секунд",
     startDelayDesc: "Даёт синхронизации хранилища время скачать заметки с других устройств до первой синхронизации с Bambu, чтобы не появились дубли.",
@@ -848,6 +858,16 @@ class BambuPrintSync extends Plugin {
     this.addCommand({ id: "new-spool", name: t("cmdNewSpool"), callback: () => this.newNote("spool") });
     this.addCommand({ id: "create-base", name: t("cmdBase"), callback: () => this.createBase() });
     this.addCommand({ id: "add-link", name: t("cmdAddLink"), callback: () => new AddLinkModal(this.app, this).open() });
+    this.addCommand({
+      id: "toggle-primary",
+      name: t("cmdPrimary"),
+      callback: () => {
+        const on = !this.isPrimary();
+        this.setPrimary(on);
+        new Notice(on ? t("nowPrimary") : t("nowSecondary"));
+        if (on && this.settings.token) this.sync(true);
+      },
+    });
     this.addCommand({ id: "recalc-cost", name: t("cmdRecalc"), callback: () => this.recalcAll(true) });
 
     this.costTimers = new Map();
@@ -1652,6 +1672,20 @@ class BambuSettingTab extends PluginSettingTab {
     const save = () => this.plugin.saveSettings();
     containerEl.empty();
 
+    new Setting(containerEl).setName(t("hDevice")).setHeading();
+    const isMain = this.plugin.isPrimary();
+    const dev = new Setting(containerEl)
+      .setName(t("primary"))
+      .setDesc(isMain ? t("primaryOn") : t("primaryOff"))
+      .addToggle((c) =>
+        c.setValue(isMain).onChange((v) => {
+          this.plugin.setPrimary(v);
+          new Notice(v ? t("nowPrimary") : t("nowSecondary"));
+          this.display();
+        })
+      );
+    dev.descEl.createDiv({ text: t("primaryDesc"), cls: "setting-item-description" });
+
     new Setting(containerEl).setName(t("hAccount")).setHeading();
     const exp = s.tokenExpires ? new Date(s.tokenExpires) : null;
     new Setting(containerEl)
@@ -1715,16 +1749,6 @@ class BambuSettingTab extends PluginSettingTab {
           } catch (e) {
             new Notice(`Bambu: ${e.message}`, 8000);
           }
-        })
-      );
-
-    new Setting(containerEl).setName(t("hDevice")).setHeading();
-    new Setting(containerEl)
-      .setName(t("primary"))
-      .setDesc(t("primaryDesc"))
-      .addToggle((c) =>
-        c.setValue(this.plugin.isPrimary()).onChange((v) => {
-          this.plugin.setPrimary(v);
         })
       );
 
