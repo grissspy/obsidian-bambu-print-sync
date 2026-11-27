@@ -644,8 +644,9 @@ function taskToRecord(task, st, fallbackTitle) {
   const round1 = (x) => Math.round(x * 10) / 10;
   const filaments = (Array.isArray(task.amsDetailMapping) ? task.amsDetailMapping : [])
     .map((m) => ({
-      type: String(m.filamentType || m.targetFilamentType || "").trim(),
-      color: hex6(m.sourceColor || m.targetColor),
+      // target* is the AMS slot the job really used; source* is the colour in the model file.
+      type: String(m.targetFilamentType || m.filamentType || "").trim(),
+      color: hex6(m.targetColor || m.sourceColor),
       grams: round1((Number(m.weight) || 0) * share),
     }))
     .filter((f) => f.grams > 0 || f.type);
@@ -723,6 +724,10 @@ function parseUsage(list) {
     if (m) out.push({ link: m[1].trim(), grams: parseFloat(m[2].replace(",", ".")) });
   }
   return out;
+}
+
+function filamentLines(rec) {
+  return rec.filaments.map((f) => `${f.type || "?"} #${f.color || "??????"} — ${f.grams} g`);
 }
 
 /** Filament lines stored on a print ("PETG #000000 — 4.8 g") back to { type, color, grams }. */
@@ -1736,8 +1741,18 @@ class BambuPrintSync extends Plugin {
         let file = byId.get(rec.id);
         if (file) {
           const fm = this.fm(file);
-          // A finished job is final: leave whatever the user edited alone.
-          if (finals.includes(fm.status) && fm.status === rec.status) continue;
+          // A finished job is final: leave whatever the user edited alone,
+          // except the filament list, which older versions filled from the model file's colours.
+          if (finals.includes(fm.status) && fm.status === rec.status) {
+            const lines = filamentLines(rec);
+            if (JSON.stringify([].concat(fm.filaments || [])) !== JSON.stringify(lines)) {
+              await this.app.fileManager.processFrontMatter(file, (pfm) => {
+                pfm.filaments = lines;
+              });
+              updated++;
+            }
+            continue;
+          }
           await this.writeRecord(file, rec, spools, false);
           updated++;
           continue;
@@ -1843,7 +1858,7 @@ class BambuPrintSync extends Plugin {
         fm.model_url = `https://makerworld.com/models/${rec.designId}`;
         fm.model_site = "MakerWorld";
       }
-      fm.filaments = rec.filaments.map((f) => `${f.type || "?"} #${f.color || "??????"} — ${f.grams} g`);
+      fm.filaments = filamentLines(rec);
       fm.source = "bambu-cloud";
       if (!fm.created) fm.created = rec.printed || localDate(new Date().toISOString());
       const manualSpool = fm.spool && String(fm.spool).trim();

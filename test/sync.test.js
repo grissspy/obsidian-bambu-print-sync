@@ -367,6 +367,8 @@ fixture = {
   assert.equal(r.gramsEstimated, true);
   r = failed({ startTime: "2026-11-01T10:00:00Z", endTime: "2026-11-01T13:00:00Z" });
   assert.equal(r.grams, 100, "never more than the full weight");
+  r = tr({ id: 3, status: 2, weight: 68.6, amsDetailMapping: [{ filamentType: "PETG", sourceColor: "D3B7A7FF", targetFilamentType: "PETG", targetColor: "FFFFFFFF", weight: 68.6 }] }, ru);
+  assert.equal(r.filaments[0].color, "FFFFFF", "the colour of the AMS slot, not of the model file");
   r = tr({ id: 2, status: 2, weight: 50, costTime: 3600, startTime: "2026-11-01T10:00:00Z" }, ru);
   assert.equal(r.time_h, 1, "a finished job without an end time still uses the estimate");
   assert.equal(r.gramsEstimated, false);
