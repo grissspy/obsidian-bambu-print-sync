@@ -36,7 +36,7 @@
 
 ## Скриншоты
 
-<p align="center"><img src="assets/screenshots/queue.png" alt="Доска очереди печати" width="100%"></p>
+<p align="center"><img src="assets/screenshots/dashboard.png" alt="Панель печати: плитки расходов, кнопки и доска очереди с картинками моделей" width="100%"></p>
 
 <p align="center"><img src="assets/screenshots/cost.png" alt="Разбивка стоимости" width="100%"></p>
 
@@ -47,11 +47,18 @@
   </tr>
   <tr>
     <td width="50%"><img src="assets/screenshots/spools.png" alt="Таблица катушек"><br><sub><b>Катушки</b>: материал, цвет, состояние, цена за кг.</sub></td>
-    <td width="50%"><img src="assets/screenshots/link.png" alt="Печать из ссылки MakerWorld"><br><sub><b>По ссылке</b>: печать, созданная вставкой ссылки MakerWorld.</sub></td>
+    <td width="50%"><img src="assets/screenshots/add-model.png" alt="Окно «Добавить модель» со ссылкой MakerWorld и выбором катушки"><br><sub><b>Добавить модель</b>: вставь ссылку и выбери катушку по цвету.</sub></td>
   </tr>
 </table>
 
-<sub>На скриншотах демо-хранилище с примерами (интерфейс на английском).</sub>
+<p align="center">
+  <img src="assets/screenshots/phone-dashboard.png" alt="Панель печати на Android" width="32%">
+  <img src="assets/screenshots/phone-add.png" alt="Добавление модели на Android" width="32%">
+  <img src="assets/screenshots/phone-spool.png" alt="Новая катушка с цветами из облака на Android" width="32%">
+</p>
+<p align="center"><sub>На Android: панель, добавление модели и новая катушка с цветами, которыми печатал принтер.</sub></p>
+
+<sub>На скриншотах демо-хранилище с выдуманными печатями и ценами (на компьютере интерфейс на английском, на телефоне на русском).</sub>
 
 ## Как это работает
 

@@ -36,7 +36,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 
 ## Screenshots
 
-<p align="center"><img src="assets/screenshots/queue.png" alt="Queue board: planned, printing, done and failed prints" width="100%"></p>
+<p align="center"><img src="assets/screenshots/dashboard.png" alt="Print dashboard: spending tiles, buttons and the queue board with model pictures" width="100%"></p>
 
 <p align="center"><img src="assets/screenshots/cost.png" alt="Cost breakdown: filament, electricity and wear per print" width="100%"></p>
 
@@ -47,11 +47,18 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
   </tr>
   <tr>
     <td width="50%"><img src="assets/screenshots/spools.png" alt="Spools table"><br><sub><b>Spools</b>: material, colour, state, price per kg.</sub></td>
-    <td width="50%"><img src="assets/screenshots/link.png" alt="Print note created from a MakerWorld link"><br><sub><b>From a link</b>: a planned print created by pasting a MakerWorld URL.</sub></td>
+    <td width="50%"><img src="assets/screenshots/add-model.png" alt="Add model window with a MakerWorld link and spool choice"><br><sub><b>Add model</b>: paste a link and pick the spool by colour.</sub></td>
   </tr>
 </table>
 
-<sub>Screenshots use a demo vault with sample data.</sub>
+<p align="center">
+  <img src="assets/screenshots/phone-dashboard.png" alt="Print dashboard on Android" width="32%">
+  <img src="assets/screenshots/phone-add.png" alt="Add model on Android" width="32%">
+  <img src="assets/screenshots/phone-spool.png" alt="New spool window with colours from the cloud on Android" width="32%">
+</p>
+<p align="center"><sub>On Android (Russian interface): the dashboard, adding a model, and a new spool with the colours your printer used.</sub></p>
+
+<sub>Screenshots use a demo vault with made-up prints and prices.</sub>
 
 ## How it works
 
