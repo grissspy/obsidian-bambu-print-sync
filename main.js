@@ -1331,10 +1331,26 @@ views:
 
 class BambuPrintSync extends Plugin {
   async onload() {
+    // A failed onload leaves Obsidian without a loaded instance to unload, so its status bar item
+    // and handlers would stay behind (one more "Bambu: …" per reinstall/reload). Keep the instance
+    // loaded and report the error instead.
+    try {
+      await this.init();
+    } catch (e) {
+      console.error("[bambu-print-sync] load", e);
+      new Notice(`Bambu Print Sync: ${(e && e.message) || e}`, 15000);
+    }
+  }
+
+  async init() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     this.syncing = false;
 
     this.statusEl = this.addStatusBarItem();
+    // Drop items left by an earlier instance that never unloaded.
+    const bar = this.statusEl.parentElement;
+    if (bar && bar.querySelectorAll) bar.querySelectorAll(".bambu-print-sync-status").forEach((el) => el.remove());
+    if (this.statusEl.addClass) this.statusEl.addClass("bambu-print-sync-status");
     this.updateStatusBar();
 
     this.addRibbonIcon("printer", t("ribbon"), () => this.sync());
