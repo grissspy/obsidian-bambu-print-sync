@@ -714,10 +714,15 @@ function matchSpool(filament, spools, st, printer) {
     return pool.slice().sort((a, b) => left(a) - left(b) || String(a.name).localeCompare(String(b.name)))[0];
   };
   if (byColor.length) return pick(byColor);
-  // A colour picked by hand is rarely the exact AMS value: accept the same named colour.
-  const name = colorName(filament.color, "en");
-  const byName = name ? byType.filter((s) => s.colorHex && colorName(s.colorHex, "en") === name) : [];
-  if (byName.length) return pick(byName);
+  // A colour picked by hand is rarely the exact AMS value: accept the nearest close colour.
+  const near = byType
+    .filter((s) => s.colorHex)
+    .map((s) => ({ s, d: colorDistance(s.colorHex, filament.color) }))
+    .filter((x) => x.d <= COLOR_CLOSE);
+  if (near.length) {
+    const best = Math.min(...near.map((x) => x.d));
+    return pick(near.filter((x) => x.d <= best + 2).map((x) => x.s));
+  }
   // Fall back to material only, among spools that have no colour set.
   return pick(byType.filter((s) => !s.colorHex));
 }
@@ -886,6 +891,30 @@ const COLOR_NAMES = [
   ["E8D5B0", "Beige", "Бежевый"], ["D2B48C", "Sand", "Песочный"], ["C8A2A0", "Dusty pink", "Пудровый"],
   ["F3EBD8", "Cream", "Кремовый"], ["B0B0B0", "Silver", "Серебристый"], ["D4AF37", "Gold", "Золотой"],
 ];
+
+/** How far apart two colours look (CIE76 ΔE in Lab); Infinity if either is not a colour. */
+function colorDistance(a, b) {
+  const lab = (hex) => {
+    const h = hex6(hex);
+    if (!/^[0-9A-F]{6}$/.test(h)) return null;
+    const lin = [0, 2, 4].map((i) => {
+      const c = parseInt(h.slice(i, i + 2), 16) / 255;
+      return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92;
+    });
+    const [r, g, bl] = lin;
+    const f = (x) => (x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16 / 116);
+    const x = f((r * 0.4124 + g * 0.3576 + bl * 0.1805) / 0.95047);
+    const y = f(r * 0.2126 + g * 0.7152 + bl * 0.0722);
+    const z = f((r * 0.0193 + g * 0.1192 + bl * 0.9505) / 1.08883);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+  };
+  const A = lab(a);
+  const B = lab(b);
+  return A && B ? Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]) : Infinity;
+}
+
+/** Colours this close count as the same filament: two reds or a white and a cream match; red and orange do not. */
+const COLOR_CLOSE = 25;
 
 /** Nearest plain colour name for a hex value. */
 function colorName(hex, lang) {
@@ -1352,6 +1381,17 @@ class BambuPrintSync extends Plugin {
 
     this.costTimers = new Map();
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.onNoteChanged(file)));
+    // Change the spool of a print from its note: the ⋮ menu and a button in the note's top bar.
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!this.isPrint(file)) return;
+        menu.addItem((item) =>
+          item.setTitle(t("cmdPickSpool")).setIcon("disc-3").onClick(() => new SpoolPickModal(this.app, this, file).open())
+        );
+      })
+    );
+    this.registerEvent(this.app.workspace.on("file-open", () => this.addSpoolAction()));
+    this.app.workspace.onLayoutReady(() => this.addSpoolAction());
 
     this.registerEvent(
       this.app.workspace.on("editor-paste", (evt, editor) => this.onPaste(evt, editor))
@@ -2143,6 +2183,8 @@ class BambuPrintSync extends Plugin {
       delete fm.spool_auto;
       if (!fm.spool_deducted) delete fm.usage;
     });
+    // The spool's price changes what the print cost, even for a finished one.
+    if (this.isPrimary()) await this.updateCost(file, true);
     if (spoolName) new Notice(t("spoolSet", { name: spoolName }));
   }
 
@@ -2234,6 +2276,23 @@ class BambuPrintSync extends Plugin {
     return price > 0 ? (price / weight) * 1000 : 0;
   }
 
+  /** A spool button in the top bar of an open print note (one per view). */
+  addSpoolAction() {
+    const leaf = this.app.workspace.getMostRecentLeaf ? this.app.workspace.getMostRecentLeaf() : null;
+    const view = leaf && leaf.view;
+    if (!view || typeof view.addAction !== "function") return;
+    const file = view.file;
+    if (view.bambuSpoolAction) {
+      view.bambuSpoolAction.toggle(!!(file && this.isPrint(file)));
+      return;
+    }
+    if (!file || !this.isPrint(file)) return;
+    view.bambuSpoolAction = view.addAction("disc-3", t("cmdPickSpool"), () => {
+      const f = view.file;
+      if (f && this.isPrint(f)) new SpoolPickModal(this.app, this, f).open();
+    });
+  }
+
   isPrint(file) {
     return file instanceof TFile && file.path.startsWith(normalizePath(this.settings.printsFolder) + "/") && this.fm(file).type === "print";
   }
@@ -2266,9 +2325,11 @@ class BambuPrintSync extends Plugin {
     if (fm.type !== "print") return false;
     const st = this.settings;
     const final = [st.statusDone, st.statusFailed].includes(fm.status);
-    if (!force && final && num(fm.cost) > 0) return false;
     const c = computeCost(fm, (link) => this.spoolPricePerKg(link, file.path), this.costSettings(fm.printer));
     if (!c) return false;
+    // A finished print keeps its cost (prices change later), unless it had no filament cost yet
+    // and now has one: a spool was linked or got its price.
+    if (!force && final && num(fm.cost) > 0 && !(num(fm.cost_filament) === 0 && c.cost_filament > 0)) return false;
     if (Object.keys(c).every((k) => num(fm[k]) === c[k] && fm[k] !== undefined)) return false;
     await this.app.fileManager.processFrontMatter(file, (f) => Object.assign(f, c));
     return true;
@@ -2667,10 +2728,7 @@ class SpoolModal extends Modal {
       swatch(tile, c.hex, "is-large");
       const info = tile.createDiv({ cls: "bambu-swatch-info" });
       info.createDiv({ cls: "bambu-swatch-title", text: colorName(c.hex, LANG) || `#${c.hex}` });
-      const cname = colorName(c.hex, "en");
-      const has = owned.some(
-        (s) => first(s.material) === first(c.material) && (s.colorHex === c.hex || (s.colorHex && colorName(s.colorHex, "en") === cname))
-      );
+      const has = owned.some((s) => first(s.material) === first(c.material) && colorDistance(s.colorHex, c.hex) <= COLOR_CLOSE);
       info.createDiv({ cls: "bambu-swatch-sub", text: `${c.material} · ${has ? t("spoolOwned") : t("spoolUsed", { g: c.grams, n: c.prints })}` });
       if (has) tile.addClass("is-owned");
       tile.addEventListener("click", (e) => {
@@ -3069,4 +3127,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, colorDistance, PRINTER_POWER, LOCALE_DEFAULTS };

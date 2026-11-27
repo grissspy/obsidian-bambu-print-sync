@@ -404,6 +404,11 @@ fixture = {
   assert.equal(matchSpool({ type: "PETG HF", color: "000000" }, [black, grey], ru), black, "near colour (same name) matches");
   assert.equal(matchSpool({ type: "PETG", color: "808080" }, [black, grey], ru), grey, "exact colour wins");
   assert.equal(matchSpool({ type: "PETG", color: "E53935" }, [black, grey], ru), null, "different colour does not match");
+  const red = { name: "PETG Red", material: "PETG", colorHex: "E53935", status: ru.spoolOpen };
+  const orange = { name: "PETG Orange", material: "PETG", colorHex: "FF8C00", status: ru.spoolOpen };
+  assert.equal(matchSpool({ type: "PETG", color: "D6001C" }, [red, orange], ru), red, "Bambu red and a picked red are one colour");
+  assert.equal(matchSpool({ type: "PETG", color: "FF8C00" }, [red], ru), null, "orange is not red");
+  assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [{ name: "B", material: "PETG", colorHex: "D3B7A7", status: ru.spoolOpen }], ru), null, "white is not beige");
   const grey2 = { name: "PETG Grey 2", material: "PETG", colorHex: "808080", status: ru.spoolOpen, remaining: 300 };
   const grey1 = Object.assign({}, grey, { remaining: 900 });
   assert.equal(matchSpool({ type: "PETG", color: "808080" }, [grey1, grey2], ru), grey2, "two spools of one colour: the started one");
