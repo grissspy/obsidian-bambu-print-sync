@@ -387,6 +387,7 @@ fixture = {
   assert.equal(colorName("898989", "ru"), "Серый");
   assert.equal(colorName("9B9EA0", "en"), "Silver");
   assert.equal(colorName("nope", "en"), "");
+  assert.equal(colorName("D3B7A7", "ru"), "Пудровый", "a warm light tone is not silver");
 
   /* ---------- matching hand-made spools ---------- */
   const { matchSpool, parseFilaments } = Plugin._test;

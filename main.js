@@ -807,7 +807,8 @@ const COLOR_NAMES = [
   ["FFD600", "Yellow", "Жёлтый"], ["43A047", "Green", "Зелёный"], ["68724D", "Olive", "Оливковый"],
   ["1E88E5", "Blue", "Синий"], ["0D2B6B", "Navy", "Тёмно-синий"], ["4FC3F7", "Light blue", "Голубой"],
   ["8E24AA", "Purple", "Фиолетовый"], ["F48FB1", "Pink", "Розовый"], ["795548", "Brown", "Коричневый"],
-  ["E8D5B0", "Beige", "Бежевый"], ["B0B0B0", "Silver", "Серебристый"], ["D4AF37", "Gold", "Золотой"],
+  ["E8D5B0", "Beige", "Бежевый"], ["D2B48C", "Sand", "Песочный"], ["C8A2A0", "Dusty pink", "Пудровый"],
+  ["F3EBD8", "Cream", "Кремовый"], ["B0B0B0", "Silver", "Серебристый"], ["D4AF37", "Gold", "Золотой"],
 ];
 
 /** Nearest plain colour name for a hex value. */
@@ -821,7 +822,9 @@ function colorName(hex, lang) {
   for (const c of COLOR_NAMES) {
     const [R, G, B] = rgb(c[0]);
     // Weighted RGB distance: close enough to how people name colours.
-    const d = 2 * (r - R) ** 2 + 4 * (g - G) ** 2 + 3 * (b - B) ** 2;
+    let d = 2 * (r - R) ** 2 + 4 * (g - G) ** 2 + 3 * (b - B) ** 2;
+    // A visibly tinted colour is not grey or silver, however close its brightness.
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 30 && Math.max(R, G, B) - Math.min(R, G, B) < 10) d += 20000;
     if (d < bestD) {
       bestD = d;
       best = c;
