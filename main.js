@@ -41,6 +41,8 @@ const STRINGS = {
     cmdLogin: "Log in to Bambu account",
     cmdNewPrint: "New print note",
     cmdNewSpool: "New spool note",
+    cmdAttachSpools: "Link spools to prints without one",
+    attachDone: "spools linked to prints: {n} (finished prints are not deducted)",
     cmdBase: "Create tracker base",
     sbNoLogin: "Bambu: not logged in",
     sbNever: "Bambu: not synced yet",
@@ -63,6 +65,7 @@ const STRINGS = {
     spoolFromPrintsHint: "Materials and colours the Bambu cloud reported for your prints. Pick one, or choose another colour below.",
     spoolNoColors: "No colours yet: they appear after the first prints are imported.",
     spoolOwned: "spool exists",
+    spoolAttached: "and set on prints without a spool: {n}",
     spoolUsed: "{g} g in {n} prints",
     spoolOther: "Another colour",
     spoolMaterial: "Material",
@@ -236,6 +239,8 @@ const STRINGS = {
     cmdLogin: "Войти в аккаунт Bambu",
     cmdNewPrint: "Новая печать",
     cmdNewSpool: "Новая катушка",
+    cmdAttachSpools: "Привязать катушки к печатям без катушки",
+    attachDone: "катушки привязаны к печатям: {n} (у готовых граммы не списываются)",
     cmdBase: "Создать базу учёта",
     sbNoLogin: "Bambu: не выполнен вход",
     sbNever: "Bambu: ещё не синхронизировано",
@@ -258,6 +263,7 @@ const STRINGS = {
     spoolFromPrintsHint: "Материалы и цвета, которые облако Bambu сообщило для твоих печатей. Выбери один или другой цвет ниже.",
     spoolNoColors: "Цветов пока нет: они появятся после импорта первых печатей.",
     spoolOwned: "катушка есть",
+    spoolAttached: "и привязана к печатям без катушки: {n}",
     spoolUsed: "{g} г в {n} печ.",
     spoolOther: "Другой цвет",
     spoolMaterial: "Материал",
@@ -669,6 +675,10 @@ function matchSpool(filament, spools, st) {
     return open.length === 1 ? open[0] : null;
   };
   if (byColor.length) return pick(byColor);
+  // A colour picked by hand is rarely the exact AMS value: accept the same named colour.
+  const name = colorName(filament.color, "en");
+  const byName = name ? byType.filter((s) => s.colorHex && colorName(s.colorHex, "en") === name) : [];
+  if (byName.length) return pick(byName);
   // Fall back to material only, among spools that have no colour set.
   return pick(byType.filter((s) => !s.colorHex));
 }
@@ -682,6 +692,29 @@ function parseUsage(list) {
     if (m) out.push({ link: m[1].trim(), grams: parseFloat(m[2].replace(",", ".")) });
   }
   return out;
+}
+
+/** Filament lines stored on a print ("PETG #000000 — 4.8 g") back to { type, color, grams }. */
+function parseFilaments(list) {
+  const out = [];
+  for (const line of [].concat(list || [])) {
+    const m = String(line).match(/^(.*?)\s*#([0-9A-Fa-f]{6})\s*—\s*([\d.,]+)\s*g/);
+    if (m) out.push({ type: m[1].trim(), color: m[2].toUpperCase(), grams: parseFloat(m[3].replace(",", ".")) || 0 });
+  }
+  return out;
+}
+
+/** Grams per matched spool for a print's filaments, most used first. */
+function spoolUsage(filaments, spools, st) {
+  const usage = [];
+  for (const f of filaments) {
+    const s = matchSpool(f, spools, st);
+    if (!s || !(f.grams > 0)) continue;
+    const existing = usage.find((u) => u.spool === s);
+    if (existing) existing.grams += f.grams;
+    else usage.push({ spool: s, grams: f.grams });
+  }
+  return usage.sort((a, b) => b.grams - a.grams);
 }
 
 function linkTarget(value) {
@@ -1174,6 +1207,11 @@ class BambuPrintSync extends Plugin {
     this.addCommand({ id: "login", name: t("cmdLogin"), callback: () => new LoginModal(this.app, this).open() });
     this.addCommand({ id: "new-print", name: t("cmdNewPrint"), callback: () => this.newNote("print") });
     this.addCommand({ id: "new-spool", name: t("cmdNewSpool"), callback: () => this.newNote("spool") });
+    this.addCommand({
+      id: "attach-spools",
+      name: t("cmdAttachSpools"),
+      callback: async () => new Notice(`Bambu: ${t("attachDone", { n: await this.attachToPrints() })}`),
+    });
     this.addCommand({ id: "create-base", name: t("cmdBase"), callback: () => this.createBase() });
     this.addCommand({ id: "add-link", name: t("cmdAddLink"), callback: () => new AddLinkModal(this.app, this).open() });
     this.addCommand({
@@ -1739,16 +1777,7 @@ class BambuPrintSync extends Plugin {
   }
 
   async writeRecord(file, rec, spools, isNew) {
-    const usage = [];
-    for (const f of rec.filaments) {
-      const s = matchSpool(f, spools, this.settings);
-      if (s && f.grams > 0) {
-        const existing = usage.find((u) => u.spool === s);
-        if (existing) existing.grams += f.grams;
-        else usage.push({ spool: s, grams: f.grams });
-      }
-    }
-    usage.sort((a, b) => b.grams - a.grams);
+    const usage = spoolUsage(rec.filaments, spools, this.settings);
 
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       fm.type = "print";
@@ -1872,8 +1901,39 @@ class BambuPrintSync extends Plugin {
       spoolPrintsBlock(LANG),
     ];
     const file = await this.app.vault.create(this.uniquePath(st.spoolsFolder, name), lines.join("\n"));
-    new Notice(t("spoolCreated", { name: file.basename }));
+    const spool = { file, name: file.basename, material: o.material || "PLA", colorHex: hex6(o.hex), status: st.spoolOpen };
+    const n = await this.attachToPrints(spool);
+    new Notice(t("spoolCreated", { name: file.basename }) + (n ? ` ${t("spoolAttached", { n })}` : ""));
     return file;
+  }
+
+  /**
+   * Put spools onto prints that have none yet, matched by material and colour.
+   * Running prints are deducted as usual when they finish. Finished prints only get the link
+   * and are marked deducted: the spool was entered with what is left on it now.
+   * `only` limits it to one (new) spool, which the metadata cache may not know yet.
+   */
+  async attachToPrints(only) {
+    const st = this.settings;
+    const spools = only ? this.spoolList().filter((s) => s.file !== only.file).concat(only) : this.spoolList();
+    const finals = [st.statusDone, st.statusFailed];
+    let n = 0;
+    for (const file of this.filesIn(st.printsFolder)) {
+      const fm = this.fm(file);
+      if (fm.type !== "print" || fm.spool_deducted) continue;
+      const running = fm.status === st.statusPrinting;
+      if (!running && !finals.includes(fm.status)) continue;
+      if ((fm.spool && String(fm.spool).trim()) || (Array.isArray(fm.usage) && fm.usage.length)) continue;
+      const usage = spoolUsage(parseFilaments(fm.filaments), spools, st);
+      if (!usage.length || (only && !usage.some((u) => u.spool === only))) continue;
+      await this.app.fileManager.processFrontMatter(file, (pfm) => {
+        pfm.spool = `[[${usage[0].spool.name}]]`;
+        if (usage.length > 1) pfm.usage = usage.map((u) => `[[${u.spool.name}]]: ${Math.round(u.grams * 10) / 10}`);
+        if (!running) pfm.spool_deducted = true;
+      });
+      n++;
+    }
+    return n;
   }
 
   /** Spools that can still be used, for pickers. */
@@ -2384,10 +2444,13 @@ class SpoolModal extends Modal {
     const owned = this.plugin.openSpools();
     const first = (x) => String(x || "").toLowerCase().split(/\s+/)[0];
 
-    new Setting(contentEl)
-      .setName(t("spoolFromPrints"))
-      .setDesc(colors.length ? t("spoolFromPrintsHint") : t("spoolNoColors"))
-      .setHeading();
+    this.modalEl.addClass("bambu-spool-modal");
+    const section = (title, desc) => {
+      const h = contentEl.createDiv({ cls: "bambu-section" });
+      h.createDiv({ cls: "bambu-section-title", text: title });
+      if (desc) h.createDiv({ cls: "bambu-section-desc", text: desc });
+    };
+    section(t("spoolFromPrints"), colors.length ? t("spoolFromPrintsHint") : t("spoolNoColors"));
     const grid = contentEl.createDiv({ cls: "bambu-swatches" });
     const tiles = [];
 
@@ -2405,9 +2468,13 @@ class SpoolModal extends Modal {
       const tile = grid.createEl("button", { cls: "bambu-swatch" });
       swatch(tile, c.hex, "is-large");
       const info = tile.createDiv({ cls: "bambu-swatch-info" });
-      info.createDiv({ cls: "bambu-swatch-title", text: `${c.material} · ${colorName(c.hex, LANG)}` });
-      const has = owned.some((s) => first(s.material) === first(c.material) && s.colorHex === c.hex);
-      info.createDiv({ cls: "bambu-swatch-sub", text: has ? t("spoolOwned") : t("spoolUsed", { g: c.grams, n: c.prints }) });
+      info.createDiv({ cls: "bambu-swatch-title", text: colorName(c.hex, LANG) || `#${c.hex}` });
+      const cname = colorName(c.hex, "en");
+      const has = owned.some(
+        (s) => first(s.material) === first(c.material) && (s.colorHex === c.hex || (s.colorHex && colorName(s.colorHex, "en") === cname))
+      );
+      info.createDiv({ cls: "bambu-swatch-sub", text: `${c.material} · ${has ? t("spoolOwned") : t("spoolUsed", { g: c.grams, n: c.prints })}` });
+      if (has) tile.addClass("is-owned");
       tile.addEventListener("click", (e) => {
         e.preventDefault();
         Object.assign(v, { material: c.material, hex: c.hex, colorName: colorName(c.hex, LANG) });
@@ -2417,7 +2484,7 @@ class SpoolModal extends Modal {
       tiles.push(tile);
     }
 
-    new Setting(contentEl).setName(t("spoolOther")).setHeading();
+    section(t("spoolOther"));
     const materials = [...new Set([...colors.map((c) => c.material), ...MATERIALS])].filter((m) => m && m !== "?");
     new Setting(contentEl).setName(t("spoolMaterial")).addDropdown((d) => {
       for (const m of materials) d.addOption(m, m);
@@ -2762,4 +2829,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };

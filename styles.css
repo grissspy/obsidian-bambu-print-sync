@@ -174,3 +174,71 @@
   align-items: center;
   gap: var(--size-4-2);
 }
+
+/* "New spool" window: plain section titles instead of setting headings,
+   which Obsidian mobile indents and greys out. */
+.bambu-section {
+  margin: var(--size-4-3) 0 var(--size-4-2);
+}
+
+.bambu-section:first-child {
+  margin-top: 0;
+}
+
+.bambu-section-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.bambu-section-desc {
+  margin-top: var(--size-2-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.35;
+}
+
+/* Tiles: colour name on top, material and usage below; never squeezed into a stub. */
+.bambu-spool-modal .bambu-swatches {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+}
+
+.bambu-swatch-info {
+  min-width: 0;
+}
+
+.bambu-swatch-title,
+.bambu-swatch-sub {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.bambu-swatch.is-owned .bambu-swatch-sub {
+  color: var(--text-success);
+}
+
+/* The colour picker is a swatch, not a full-width bar. */
+.bambu-spool-modal input[type="color"] {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border-hover);
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.bambu-spool-modal input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.bambu-spool-modal input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.bambu-spool-modal input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}

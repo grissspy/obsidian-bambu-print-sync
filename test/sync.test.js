@@ -388,6 +388,19 @@ fixture = {
   assert.equal(colorName("9B9EA0", "en"), "Silver");
   assert.equal(colorName("nope", "en"), "");
 
+  /* ---------- matching hand-made spools ---------- */
+  const { matchSpool, parseFilaments } = Plugin._test;
+  const black = { name: "PETG Black", material: "PETG", colorHex: "111111", status: ru.spoolOpen };
+  const grey = { name: "PETG Grey", material: "PETG", colorHex: "808080", status: ru.spoolOpen };
+  assert.equal(matchSpool({ type: "PETG HF", color: "000000" }, [black, grey], ru), black, "near colour (same name) matches");
+  assert.equal(matchSpool({ type: "PETG", color: "808080" }, [black, grey], ru), grey, "exact colour wins");
+  assert.equal(matchSpool({ type: "PETG", color: "E53935" }, [black, grey], ru), null, "different colour does not match");
+  assert.deepEqual(parseFilaments(["PETG #000000 — 4,8 g", "junk"]), [{ type: "PETG", color: "000000", grams: 4.8 }]);
+
+  add("3D/Prints/Running gear.md", { type: "print", status: ru.statusPrinting, filaments: ["PETG #68724D — 12 g"] });
+  add("3D/Prints/Running own.md", { type: "print", status: ru.statusPrinting, spool: "[[Other]]", filaments: ["PETG #68724D — 3 g"] });
+  add("3D/Prints/Old olive.md", { type: "print", status: ru.statusDone, filaments: ["PETG #68724D — 5 g"] });
+
   const sp = await plugin.createSpool({ material: "PETG", hex: "68724d", brand: "Bambu Lab", weight: "1000", price: "1590" });
   const spFm = files.get(sp.path).fm;
   assert.equal(sp.basename, "PETG Olive", "named after material and colour");
@@ -396,6 +409,12 @@ fixture = {
   assert.equal(spFm.price, "1590");
   assert.equal(spFm.remaining_g, "1000");
   assert.ok(plugin.openSpools().some((x) => x.name === "PETG Olive"), "new spool can be picked");
+  assert.equal(files.get("3D/Prints/Running gear.md").fm.spool, "[[PETG Olive]]", "new spool goes onto a running print");
+  assert.equal(files.get("3D/Prints/Running own.md").fm.spool, "[[Other]]", "a chosen spool is kept");
+  assert.equal(files.get("3D/Prints/Old olive.md").fm.spool, "[[PETG Olive]]", "finished prints get the link too");
+  assert.equal(files.get("3D/Prints/Old olive.md").fm.spool_deducted, true, "but nothing is deducted for them");
+  assert.equal(files.get("3D/Prints/Running gear.md").fm.spool_deducted, undefined, "a running print is deducted later");
+  assert.equal(await plugin.attachToPrints(), 0, "nothing left to link");
 
   const vase = await plugin.addModel(parseModelUrl("https://makerworld.com/en/models/424242-olive-vase"), "PETG Olive");
   assert.equal(files.get(vase.path).fm.spool, "[[PETG Olive]]", "spool chosen while planning");
