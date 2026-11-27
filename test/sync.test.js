@@ -466,6 +466,15 @@ fixture = {
   await plugin.setSpool(vase, "PETG Olive");
   assert.equal(files.get(vase.path).fm.spool, "[[PETG Olive]]");
 
+  /* ---------- filament price ---------- */
+  const base = { powerW: 0, kwhPrice: 0, printerPrice: 0, lifetimeH: 0, maintPerHour: 0 };
+  const noPrice = () => 0;
+  assert.equal(computeCost({ grams: 126.9, time_h: 4, spool: "[[S]]" }, noPrice, base), null, "nothing priced: nothing written");
+  assert.equal(computeCost({ grams: 126.9, time_h: 4, spool: "[[S]]" }, noPrice, Object.assign({}, base, { defaultPriceKg: 1000 })).cost_filament, 126.9, "spool without price: default price");
+  assert.equal(computeCost({ grams: 100, time_h: 1, usage: ["[[A]]: 60"] }, (l) => (l === "A" ? 2000 : 0), Object.assign({}, base, { defaultPriceKg: 1000 })).cost_filament, 160, "colour without spool at the default price");
+  assert.equal(computeCost({ grams: 100, time_h: 1, spool: "[[A]]" }, () => 1000, base).cost_filament, 100);
+  assert.equal(Plugin._test.num("1 990 ₽"), 1990);
+
   /* ---------- several printers ---------- */
   assert.equal(plugin.settings.printers["Desk A1 mini"].model, "A1 mini", "printers and models learnt during the sync");
   assert.deepEqual(plugin.knownPrinters().slice(0, 2), ["Desk A1 mini", "Workshop P1S"]);

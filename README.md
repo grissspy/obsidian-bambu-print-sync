@@ -149,6 +149,7 @@ Set the rates once in the settings:
 | Setting | Example | Used for |
 |---|---|---|
 | Printer model | Bambu Lab P2S · ~130 W | fills in the average power; edit the watts if you measured yours |
+| Filament price per kg | When a print has no spool or its spool has no price. |
 | Electricity price per kWh | `0.18` | `hours × W ÷ 1000 × price` |
 | Printer price, lifetime hours | `800`, `4000` | depreciation: `hours × price ÷ lifetime` |
 | Maintenance per hour | `0.05` | nozzles, plates, belts, lubricant |

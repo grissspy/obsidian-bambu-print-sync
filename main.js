@@ -229,6 +229,10 @@ const STRINGS = {
     printerOther: "Other",
     powerW: "Average power, W",
     kwhPrice: "Electricity price per kWh",
+    defaultPriceKg: "Filament price per kg",
+    defaultPriceKgDesc: "Used when a print has no spool or its spool has no price. 0: such filament costs nothing.",
+    spoolPriceDesc: "For the whole spool, in {cur}. Empty: the filament price from the settings.",
+    spoolNoPrice: "no price: the filament price from the settings is used",
     printerPrice: "Printer price",
     lifetimeH: "Printer lifetime, hours",
     lifetimeHDesc: "Depreciation per printing hour = printer price ÷ lifetime hours.",
@@ -441,6 +445,10 @@ const STRINGS = {
     printerOther: "Другой",
     powerW: "Средняя мощность, Вт",
     kwhPrice: "Цена электричества за кВт·ч",
+    defaultPriceKg: "Цена пластика за кг",
+    defaultPriceKgDesc: "Берётся, если у печати нет катушки или у катушки нет цены. 0 — такой пластик ничего не стоит.",
+    spoolPriceDesc: "За всю катушку, {cur}. Пусто — цена пластика из настроек.",
+    spoolNoPrice: "без цены: берётся цена пластика из настроек",
     printerPrice: "Цена принтера",
     lifetimeH: "Ресурс принтера, часов",
     lifetimeHDesc: "Амортизация за час печати = цена принтера ÷ ресурс в часах.",
@@ -519,6 +527,7 @@ const DEFAULT_SETTINGS = Object.assign(
     printerModel: "P1S",
     powerW: 120,
     kwhPrice: 0,
+    defaultPriceKg: 0,
     printerPrice: 0,
     lifetimeH: 4000,
     maintPerHour: 0,
@@ -550,7 +559,8 @@ const PRINTER_POWER = {
 /* ------------------------------------------------------------------ */
 
 function num(v) {
-  const n = typeof v === "number" ? v : parseFloat(String(v == null ? "" : v).replace(",", "."));
+  // "1 990 ₽", "1990,5" and 1990 all read as numbers.
+  const n = typeof v === "number" ? v : parseFloat(String(v == null ? "" : v).replace(/[\s\u00a0\u202f]/g, "").replace(",", "."));
   return isFinite(n) ? n : 0;
 }
 
@@ -571,9 +581,16 @@ function computeCost(fm, spoolPrice, st) {
   let filament = 0;
   const override = num(fm.price_kg);
   const parts = parseUsage(fm.usage);
+  // A spool without a price, a colour without a spool, or no spool at all: the default price per kg.
+  const fallback = num(st.defaultPriceKg);
+  const priced = (link) => spoolPrice(link) || fallback;
   if (override) filament = (grams * override) / 1000;
-  else if (parts.length) filament = parts.reduce((sum, p) => sum + (p.grams * spoolPrice(p.link)) / 1000, 0);
-  else if (fm.spool) filament = (grams * spoolPrice(linkTarget(fm.spool))) / 1000;
+  else if (parts.length) {
+    const covered = parts.reduce((sum, p) => sum + p.grams, 0);
+    filament = parts.reduce((sum, p) => sum + (p.grams * priced(p.link)) / 1000, 0);
+    filament += (Math.max(0, grams - covered) * fallback) / 1000;
+  } else if (fm.spool) filament = (grams * priced(linkTarget(fm.spool))) / 1000;
+  else filament = (grams * fallback) / 1000;
 
   const power = (hours * num(st.powerW) * num(st.kwhPrice)) / 1000;
   const life = num(st.lifetimeH);
@@ -1991,6 +2008,8 @@ class BambuPrintSync extends Plugin {
       const deducted = st.autoDeduct ? await this.deductAll(false) : 0;
       // Spools added after a print was imported: link them now (finished prints are not deducted).
       const attached = await this.attachToPrints();
+      // Prints still without a filament cost get one once a spool or the default price is known.
+      for (const f of this.filesIn(st.printsFolder)) await this.updateCost(f, false);
 
       const parts = [];
       if (created) parts.push(t("created", { n: created }));
@@ -2141,7 +2160,9 @@ class BambuPrintSync extends Plugin {
     const file = await this.app.vault.create(this.uniquePath(st.spoolsFolder, name), lines.join("\n"));
     const spool = { file, name: file.basename, material: o.material || "PLA", colorHex: hex6(o.hex), status: st.spoolOpen, printer: o.printer || "" };
     const n = await this.attachToPrints(spool);
-    new Notice(t("spoolCreated", { name: file.basename }) + (n ? ` ${t("spoolAttached", { n })}` : ""));
+    new Notice(
+      t("spoolCreated", { name: file.basename }) + (n ? ` ${t("spoolAttached", { n })}` : "") + (num(o.price) > 0 ? "" : `. ${t("spoolNoPrice")}`)
+    );
     return file;
   }
 
@@ -2349,6 +2370,15 @@ class BambuPrintSync extends Plugin {
     if (Object.keys(c).every((k) => num(fm[k]) === c[k] && fm[k] !== undefined)) return false;
     await this.app.fileManager.processFrontMatter(file, (f) => Object.assign(f, c));
     return true;
+  }
+
+  /** Give a filament cost to prints that have none yet (finished ones keep everything else). */
+  async fillCosts() {
+    if (!this.isPrimary()) return 0;
+    let n = 0;
+    for (const f of this.filesIn(this.settings.printsFolder)) if (await this.updateCost(f, false)) n++;
+    if (n) new Notice(t("recalcDone", { n }));
+    return n;
   }
 
   async recalcAll(manual) {
@@ -2791,8 +2821,11 @@ class SpoolModal extends Modal {
     new Setting(contentEl).setName(t("spoolWeight")).addText((c) => c.setValue(String(v.weight)).onChange((x) => (v.weight = x)));
     new Setting(contentEl)
       .setName(t("spoolPrice"))
-      .setDesc(st.currency || "")
-      .addText((c) => c.setPlaceholder("1990").onChange((x) => (v.price = x)));
+      .setDesc(t("spoolPriceDesc", { cur: st.currency || "" }))
+      .addText((c) => {
+        c.inputEl.inputMode = "decimal";
+        c.setPlaceholder("—").onChange((x) => (v.price = x));
+      });
     const printers = this.plugin.knownPrinters();
     if (printers.length > 1) {
       new Setting(contentEl).setName(t("spoolPrinter")).addDropdown((d) => {
@@ -3036,6 +3069,11 @@ class BambuSettingTab extends PluginSettingTab {
           s[key] = parse ? parse(v) : v.trim();
           await save();
           if (key === "intervalMin") this.plugin.restartTimer();
+          // Prints that had no filament cost get one with the new default price.
+          if (key === "defaultPriceKg") {
+            clearTimeout(this.fillTimer);
+            this.fillTimer = setTimeout(() => this.plugin.fillCosts(), 1500);
+          }
         })
       );
     };
@@ -3080,6 +3118,7 @@ class BambuSettingTab extends PluginSettingTab {
       });
     text(t("powerW"), "powerW", null, numeric);
     text(t("kwhPrice"), "kwhPrice", null, numeric);
+    text(t("defaultPriceKg"), "defaultPriceKg", t("defaultPriceKgDesc"), numeric);
     text(t("printerPrice"), "printerPrice", null, numeric);
     text(t("lifetimeH"), "lifetimeH", t("lifetimeHDesc"), numeric);
     text(t("maintPerHour"), "maintPerHour", t("maintPerHourDesc"), numeric);
@@ -3143,4 +3182,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, colorDistance, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { num, cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, colorDistance, PRINTER_POWER, LOCALE_DEFAULTS };
