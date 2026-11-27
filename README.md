@@ -91,7 +91,7 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | New print note | Creates a print note with the right properties in the configured folder. |
 | New spool note | Opens the spool window: colour tiles from your prints, material list, colour picker, brand, weight and price. |
 | Choose the spool for this print | Pick a spool by colour for the open print note. |
-| Link spools to prints without one | Sets the spool on prints that have none. Finished prints are not deducted. A new spool does this by itself. |
+| Link spools to prints without one | Sets the spool on prints that have none. Finished prints are not deducted. A new spool and every sync do this by themselves. For running prints without a spool it says why none was found. |
 | Create print dashboard | Creates a note with spending tiles and the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |

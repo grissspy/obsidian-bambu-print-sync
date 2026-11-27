@@ -395,6 +395,14 @@ fixture = {
   assert.equal(matchSpool({ type: "PETG HF", color: "000000" }, [black, grey], ru), black, "near colour (same name) matches");
   assert.equal(matchSpool({ type: "PETG", color: "808080" }, [black, grey], ru), grey, "exact colour wins");
   assert.equal(matchSpool({ type: "PETG", color: "E53935" }, [black, grey], ru), null, "different colour does not match");
+  const grey2 = { name: "PETG Grey 2", material: "PETG", colorHex: "808080", status: ru.spoolOpen, remaining: 300 };
+  const grey1 = Object.assign({}, grey, { remaining: 900 });
+  assert.equal(matchSpool({ type: "PETG", color: "808080" }, [grey1, grey2], ru), grey2, "two spools of one colour: the started one");
+  const { whyNoSpool } = Plugin._test;
+  assert.ok(/external|внешняя/.test(whyNoSpool([], [grey], ru)), "no filament data");
+  assert.ok(/(no spool of|нет катушки) PLA/.test(whyNoSpool([{ type: "PLA", color: "000000", grams: 5 }], [grey], ru)), "no material");
+  assert.ok(/PETG Grey/.test(whyNoSpool([{ type: "PETG", color: "E53935", grams: 5 }], [grey], ru)), "lists spools of that material");
+  assert.equal(whyNoSpool([{ type: "PETG", color: "808080", grams: 5 }], [grey], ru), "");
   assert.deepEqual(parseFilaments(["PETG #000000 — 4,8 g", "junk"]), [{ type: "PETG", color: "000000", grams: 4.8 }]);
 
   add("3D/Prints/Running gear.md", { type: "print", status: ru.statusPrinting, filaments: ["PETG #68724D — 12 g"] });

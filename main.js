@@ -42,6 +42,11 @@ const STRINGS = {
     cmdNewPrint: "New print note",
     cmdNewSpool: "New spool note",
     cmdAttachSpools: "Link spools to prints without one",
+    attached: "spools linked: {n}",
+    whyNoFilament: "the Bambu cloud sent no filament for this print (external spool?): choose the spool by hand",
+    whyNoMaterial: "no spool of {f}: add one with “New spool”",
+    whyNoColor: "{f} — no spool of this colour; there are: {list}",
+    whyLater: "will be linked on the next sync",
     attachDone: "spools linked to prints: {n} (finished prints are not deducted)",
     cmdBase: "Create tracker base",
     sbNoLogin: "Bambu: not logged in",
@@ -240,6 +245,11 @@ const STRINGS = {
     cmdNewPrint: "Новая печать",
     cmdNewSpool: "Новая катушка",
     cmdAttachSpools: "Привязать катушки к печатям без катушки",
+    attached: "привязано катушек: {n}",
+    whyNoFilament: "облако Bambu не прислало пластик для этой печати (внешняя катушка?): выбери катушку вручную",
+    whyNoMaterial: "нет катушки {f}: добавь её через «Новая катушка»",
+    whyNoColor: "{f} — нет катушки этого цвета; есть: {list}",
+    whyLater: "привяжется при следующей синхронизации",
     attachDone: "катушки привязаны к печатям: {n} (у готовых граммы не списываются)",
     cmdBase: "Создать базу учёта",
     sbNoLogin: "Bambu: не выполнен вход",
@@ -669,10 +679,13 @@ function matchSpool(filament, spools, st) {
   const usable = spools.filter((s) => s.status !== st.spoolEmpty);
   const byType = usable.filter((s) => s.material && type && first(s.material) === first(type));
   const byColor = byType.filter((s) => s.colorHex && s.colorHex === filament.color);
+  // Several fitting spools: open ones first, then the one with the least left, so a started spool is used up first.
   const pick = (list) => {
-    if (list.length === 1) return list[0];
+    if (list.length <= 1) return list[0] || null;
     const open = list.filter((s) => s.status === st.spoolOpen);
-    return open.length === 1 ? open[0] : null;
+    const pool = open.length ? open : list;
+    const left = (s) => (s.remaining == null || isNaN(s.remaining) ? Infinity : s.remaining);
+    return pool.slice().sort((a, b) => left(a) - left(b) || String(a.name).localeCompare(String(b.name)))[0];
   };
   if (byColor.length) return pick(byColor);
   // A colour picked by hand is rarely the exact AMS value: accept the same named colour.
@@ -681,6 +694,24 @@ function matchSpool(filament, spools, st) {
   if (byName.length) return pick(byName);
   // Fall back to material only, among spools that have no colour set.
   return pick(byType.filter((s) => !s.colorHex));
+}
+
+/** Why no spool fits a print: a short reason for the user, or "" when one does. */
+function whyNoSpool(filaments, spools, st) {
+  st = st || LOCALE_DEFAULTS.en;
+  const list = filaments.filter((f) => f.grams > 0);
+  if (!list.length) return t("whyNoFilament");
+  const first = (s) => String(s || "").toLowerCase().split(/\s+/)[0];
+  for (const f of list) {
+    if (matchSpool(f, spools, st)) continue;
+    const label = `${f.type || "?"} ${colorName(f.color, LANG) || "#" + f.color}`;
+    const usable = spools.filter((s) => s.status !== st.spoolEmpty);
+    const sameType = usable.filter((s) => first(s.material) === first(f.type));
+    if (!sameType.length) return t("whyNoMaterial", { f: label });
+    const names = sameType.map((s) => `${s.name} (${colorName(s.colorHex, LANG) || "—"})`).slice(0, 3).join(", ");
+    return t("whyNoColor", { f: label, list: names });
+  }
+  return "";
 }
 
 /** Parse `usage` entries like "[[Spool]]: 12.3". */
@@ -1210,7 +1241,12 @@ class BambuPrintSync extends Plugin {
     this.addCommand({
       id: "attach-spools",
       name: t("cmdAttachSpools"),
-      callback: async () => new Notice(`Bambu: ${t("attachDone", { n: await this.attachToPrints() })}`),
+      callback: async () => {
+        const n = await this.attachToPrints();
+        const why = this.unmatchedRunning();
+        const lines = [`Bambu: ${t("attachDone", { n })}`].concat(why.slice(0, 3).map((w) => `• ${w.name}: ${w.why}`));
+        new Notice(lines.join("\n"), why.length ? 15000 : 5000);
+      },
     });
     this.addCommand({ id: "create-base", name: t("cmdBase"), callback: () => this.createBase() });
     this.addCommand({ id: "add-link", name: t("cmdAddLink"), callback: () => new AddLinkModal(this.app, this).open() });
@@ -1439,6 +1475,7 @@ class BambuPrintSync extends Plugin {
         material: String(fm.material || ""),
         colorHex: hex6(fm.color_hex),
         status: String(fm.spool_status || ""),
+        remaining: fm.remaining_g === "" || fm.remaining_g == null ? null : Number(fm.remaining_g),
       }));
   }
 
@@ -1751,6 +1788,8 @@ class BambuPrintSync extends Plugin {
       this.refreshSettings();
 
       const deducted = st.autoDeduct ? await this.deductAll(false) : 0;
+      // Spools added after a print was imported: link them now (finished prints are not deducted).
+      const attached = await this.attachToPrints();
 
       const parts = [];
       if (created) parts.push(t("created", { n: created }));
@@ -1758,6 +1797,7 @@ class BambuPrintSync extends Plugin {
       if (updated) parts.push(t("updated", { n: updated }));
       if (covers) parts.push(t("covers", { n: covers }));
       if (deducted) parts.push(t("deducted", { n: deducted }));
+      if (attached) parts.push(t("attached", { n: attached }));
       if (removed) parts.push(t("dupRemoved", { n: removed }));
       if (!quiet || parts.length) new Notice(`Bambu: ${parts.length ? parts.join(", ") : t("nothingNew")}`);
     } catch (e) {
@@ -1905,6 +1945,20 @@ class BambuPrintSync extends Plugin {
     const n = await this.attachToPrints(spool);
     new Notice(t("spoolCreated", { name: file.basename }) + (n ? ` ${t("spoolAttached", { n })}` : ""));
     return file;
+  }
+
+  /** Running prints that still have no spool, with the reason. */
+  unmatchedRunning() {
+    const st = this.settings;
+    const spools = this.spoolList();
+    const out = [];
+    for (const file of this.filesIn(st.printsFolder)) {
+      const fm = this.fm(file);
+      if (fm.type !== "print" || fm.status !== st.statusPrinting) continue;
+      if ((fm.spool && String(fm.spool).trim()) || (Array.isArray(fm.usage) && fm.usage.length)) continue;
+      out.push({ name: file.basename, why: whyNoSpool(parseFilaments(fm.filaments), spools, st) || t("whyLater") });
+    }
+    return out;
   }
 
   /**
@@ -2829,4 +2883,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
