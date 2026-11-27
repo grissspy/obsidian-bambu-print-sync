@@ -29,8 +29,8 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
-| 🧵 **Spools** | Finds the spool by material and AMS colour (a colour picked by hand matches when it is close to the AMS colour: two reds do, red and orange do not), splits multi-colour prints across spools (one per colour; a colour without a spool is not deducted), and deducts grams once per print. A spool can be tied to one printer. |
-| 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. |
+| 🧵 **Spools** | Finds the spool by material and AMS colour (a colour picked by hand matches when it is close to the AMS colour: two reds do, red and orange do not), and splits multi-colour prints across spools (one per colour). A spool can be tied to one printer. How much is left on a spool is up to you: the plugin does not track it. |
+| 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. A MakerWorld model added to the plan gets the weight and print time from its page, so its cost is known before printing (shown with ≈ until the real job replaces it). |
 | ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job. The plugin scales it by how long the job ran against the slicer estimate, counts only the time it really ran, and marks the grams as an estimate (`grams_estimated`). A job cancelled before it started costs nothing; without a slicer estimate the full weight is kept as an upper bound. Warm-up and calibration count as printing, so very early failures are slightly overestimated; fix the grams by hand if you know them, the sync will not overwrite them. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
 
@@ -43,10 +43,10 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 <table>
   <tr>
     <td width="50%"><img src="assets/screenshots/month.png" alt="Grams, hours and cost by month"><br><sub><b>By month</b>: grams, hours and cost per month.</sub></td>
-    <td width="50%"><img src="assets/screenshots/spool.png" alt="Spool note with the prints made from it"><br><sub><b>Spool note</b>: remaining filament and every print made from it.</sub></td>
+    <td width="50%"><img src="assets/screenshots/spool.png" alt="Spool note with the prints made from it"><br><sub><b>Spool note</b>: every print made from it.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/screenshots/spools.png" alt="Spools table with remaining filament"><br><sub><b>Spools</b>: what is left, price per kg, low-stock warning.</sub></td>
+    <td width="50%"><img src="assets/screenshots/spools.png" alt="Spools table"><br><sub><b>Spools</b>: material, colour, state, price per kg.</sub></td>
     <td width="50%"><img src="assets/screenshots/link.png" alt="Print note created from a MakerWorld link"><br><sub><b>From a link</b>: a planned print created by pasting a MakerWorld URL.</sub></td>
   </tr>
 </table>
@@ -65,7 +65,7 @@ flowchart LR
     E -- no --> F[Create a print note]
     D --> G[Match spool by<br/>material + colour]
     F --> G
-    G --> H[Deduct grams from<br/>spool remaining_g]
+    G --> H[Work out<br/>the cost]
     H --> I[[Bases: queue, totals,<br/>failures, spools]]
 ```
 
@@ -85,13 +85,12 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 | Command | What it does |
 |---|---|
-| Sync prints from Bambu cloud | Imports new jobs, updates running ones, then deducts filament. |
-| Deduct filament from spools | Deducts finished and failed prints that have a spool but were not deducted yet. Works for manual notes too. |
+| Sync prints from Bambu cloud | Imports new jobs, updates running ones, links spools and works out costs. |
 | Add model to queue by link | Creates a planned print from a MakerWorld, Printables, Thingiverse or Cults3D link. |
 | New print note | Creates a print note with the right properties in the configured folder. |
 | New spool note | Opens the spool window: colour tiles from your prints, material list, colour picker, brand, weight and price. |
 | Choose the spool for this print | Pick a spool by colour for the open print note. Also a spool button at the top of the note and an item in its ⋮ menu. |
-| Link spools to prints without one | Sets the spool on prints that have none. Finished prints are not deducted. A new spool and every sync do this by themselves. For running prints without a spool it says why none was found. |
+| Link spools to prints without one | Sets the spool on prints that have none. A new spool and every sync do this by themselves. For running prints without a spool it says why none was found. |
 | Create print dashboard | Creates a note with spending tiles and the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |
@@ -113,12 +112,12 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `filaments` | `PLA #000000 — 42.4 g` | sync |
 | `usage` | `"[[PLA Basic Black]]: 30"` | sync: grams per spool |
 | `spool_auto` | `"[[PLA Basic Black]]"` | sync: the plugin chose the spool; change `spool` by hand and it is left alone |
-| `spool_late` | `true` | the spool was added after the print, nothing is deducted |
+| `spool_late` | `true` | the spool was added after the print; the link is kept as it is |
 | `grams_estimated` | `true` | sync, for failed prints |
+| `estimate` | `true` | Add model: grams and time come from the MakerWorld page; the real job replaces them |
 | `model_url`, `model_site`, `makerworld_id` | `https://makerworld.com/…` | Add model, or the cloud sync |
 | `cover` | `[[bambu-123.png]]` | model page or Bambu cloud |
 | `bambu_task_id`, `bambu_title`, `printer`, `time_est_min`, `source` | | sync |
-| `spool_deducted` | `true` | plugin, after deducting |
 | `price_kg` | `1990` | you, optional override of the spool price |
 | `cost_filament`, `cost_power`, `cost_wear`, `cost` | `1.06`, `0.06`, `0.67`, `1.79` | plugin |
 
@@ -133,7 +132,6 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `color_hex` | `000000` | AMS colour without `#`. Leave empty to match by material only. |
 | `weight_g` | `1000` | Filament weight on a full spool. |
 | `price` | `1990` | Price of the spool in your currency. |
-| `remaining_g` | `870` | Updated by the plugin. |
 | `spool_status` | `In use`, `Empty` | Empty spools are never matched. |
 
 </details>
@@ -182,11 +180,11 @@ Prefer pasting links straight into notes? Turn on *Queue models from pasted link
 
 Obsidian Sync, Seafile, iCloud, Syncthing and similar tools copy your notes between devices. The plugin is built to work alongside them:
 
-- **One device writes.** Only the **main device** imports from the Bambu cloud, deducts filament and writes costs. The switch is the first item in the plugin settings, and there is also a command, *Make this device the main one*. Desktops are main by default, phones are not. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Make exactly one device the main one; a phone works too, but it only syncs while Obsidian is open.
+- **One device writes.** Only the **main device** imports from the Bambu cloud and writes costs. The switch is the first item in the plugin settings, and there is also a command, *Make this device the main one*. Desktops are main by default, phones are not. The switch is stored on the device itself, so it stays put even if your plugin settings are synced. Make exactly one device the main one; a phone works too, but it only syncs while Obsidian is open.
 - **Two main devices cannot happen.** Each device keeps a small service note in a `Devices` folder next to your notes, and only ever writes its own note, so the vault sync has nothing to merge. Turning the switch on while another device is actively the main one asks first; the other device then steps down by itself the next time it would import, before touching anything. The settings show which device is the main one and when it last synced.
 - **No main device is noticed.** If no device is the main one, or the main device has not synced for two days, the other devices show a warning (once a day) with a *Make this the main device* button. A main device that is not logged in warns too.
 - **It waits for your sync.** The first Bambu sync after Obsidian starts is delayed (30 seconds by default) so notes made on other devices arrive first.
-- **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the one already deducted, or the oldest, and moves the other to the trash.
+- **Duplicates clean themselves up.** If two copies of the same cloud job ever show up, the plugin keeps the oldest, and moves the other to the trash.
 - **Edits are small.** The plugin only changes properties in the note header, and only when a value actually changes, so the sync tool has little to merge and no edit loops between devices.
 
 Adding models works on every device, since it is something you do by hand.
@@ -209,7 +207,7 @@ Your password is sent to Bambu Lab once to get a token and is **never stored**. 
 ## FAQ
 
 **Does it work without the cloud?**
-Yes. Create print and spool notes yourself and run *Deduct filament from spools*; the base works the same. LAN-only printers are not synced.
+Yes. Create print and spool notes yourself; the base and the costs work the same. LAN-only printers are not synced.
 
 **Will it import my whole history?**
 It requests the last 50 jobs by default. Use *Import prints since* to start from a date.
@@ -228,7 +226,7 @@ The plugin is plain JavaScript with no build step: `main.js` is what Obsidian lo
 npm test
 ```
 
-The test runs the sync and deduction logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
+The test runs the sync, spool and cost logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
 
 ## Support
 

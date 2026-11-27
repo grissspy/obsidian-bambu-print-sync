@@ -1,4 +1,4 @@
-/* End-to-end test of the sync and deduction logic against a fake Obsidian
+/* End-to-end test of the sync, spool and cost logic against a fake Obsidian
  * vault and a fake Bambu cloud. Run with `npm test`. No dependencies. */
 "use strict";
 
@@ -200,7 +200,9 @@ fixture = {
     __raw: { status: 200, text: '<html><head><meta content="/img/clip.jpg?x=1&amp;y=2" property="og:image"></head></html>', headers: { "content-type": "text/html" } },
   },
   "https://makerworld.com/models/555": {
-    __raw: { status: 200, text: '<meta property="og:title" content="Desk Hook - Free 3D Print Model - MakerWorld">', headers: {} },
+    __raw: { status: 200, text: '<meta property="og:title" content="Desk Hook - Free 3D Print Model - MakerWorld"><script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { design: { id: 555, instances: [{ id: 1, profileId: 11, weight: 12.34, prediction: 5400 }, { id: 2, profileId: 22, weight: 40, prediction: 9000 }] } } } }) +
+      "</script>", headers: {} },
   },
   "https://makerworld.com/img/clip.jpg": { __raw: { status: 200, arrayBuffer: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).buffer, headers: { "content-type": "image/jpeg" } } },
 };
@@ -237,7 +239,6 @@ fixture = {
   plugin.setPrimary(false);
   await plugin.sync(true);
   assert.equal(files.get(P + "Shelf bracket.md").fm.bambu_task_id, undefined, "secondary device does not sync");
-  assert.equal(await plugin.deductAll(false), 0);
   plugin.setPrimary(true);
 
   assert.equal(parseModelUrl("Https://makerworld.com/en/models/5-x").url, "https://makerworld.com/en/models/5-x", "scheme is lower-cased");
@@ -290,7 +291,7 @@ fixture = {
   await plugin.sync();
   const get = (n) => [...files.values()].find((x) => x.file.basename.startsWith(n)).fm;
 
-  assert.ok(files.has(P + "Old box copy A.md") && !files.has(P + "Old box copy B.md"), "duplicate removed, deducted copy kept");
+  assert.ok(files.has(P + "Old box copy A.md") && !files.has(P + "Old box copy B.md"), "duplicate removed, frozen copy kept");
 
   const plan = get("Shelf bracket");
   assert.equal(plan.bambu_task_id, "3", "planned note is linked to the cloud job");
@@ -298,7 +299,6 @@ fixture = {
   assert.equal(plan.spool, "[[PLA Black]]", "spool matched by material + colour, empty spool skipped");
   assert.equal(plan.time_h, 2);
   assert.equal(plan.time_m, 40);
-  assert.equal(plan.spool_deducted, true);
 
   const box = get("Box");
   assert.equal(box.status, ru.statusFailed);
@@ -308,12 +308,7 @@ fixture = {
 
   const live = get("Live");
   assert.equal(live.status, ru.statusPrinting);
-  assert.ok(!live.spool_deducted);
-
-  assert.equal(get("Manual").spool_deducted, true, "manual notes are deducted too");
-  assert.equal(get("PLA Black").remaining_g, 870 - 42.4 - 30);
-  assert.equal(get("PETG White").remaining_g, 500 - 10 - 20);
-  assert.equal(get("PLA Old").remaining_g, 0);
+  assert.equal(get("PLA Black").remaining_g, 870, "spools are not deducted: what is left is tracked by hand");
 
   const clip = get("Cable clip");
   assert.equal(clip.bambu_task_id, "4", "linked by MakerWorld model ID although the names differ");
@@ -330,7 +325,6 @@ fixture = {
   assert.ok((await plugin.recalcAll(false)) >= 1, "recalculate all updates final prints");
 
   await plugin.sync();
-  assert.equal(get("PLA Black").remaining_g, 870 - 42.4 - 30, "no double deduction");
   assert.equal([...files.keys()].filter((k) => k.startsWith(P)).length, 6, "no duplicate notes");
 
   // Pictures: from the model page when queued, from the cloud plate preview otherwise.
@@ -355,6 +349,25 @@ fixture = {
   assert.ok(!files.has(P + "Desk Hook (2).md"), "running twice does not rename again");
   assert.ok(files.has(P + "Desk Hook.md"), "card renamed after the page title");
   assert.equal(files.get(P + "Desk Hook.md").fm.bambu_title, "Desk Hook");
+  const hookFm = files.get(P + "Desk Hook.md").fm;
+  assert.deepEqual([hookFm.grams, hookFm.time_h, hookFm.time_m, hookFm.estimate], [12.3, 1, 30, true], "plan gets weight and time from the model page");
+  assert.ok(Plugin._test.num(hookFm.cost) > 0, "and a preliminary cost: " + hookFm.cost);
+
+  const { modelEstimate } = Plugin._test;
+  const nd = (o) => '<script id="__NEXT_DATA__" type="application/json">' + JSON.stringify(o) + "</script>";
+  const two = nd({ d: { instances: [{ id: 1, profileId: 11, weight: 10, prediction: 600 }, { id: 2, profileId: 22, weight: 40, prediction: 7260 }] } });
+  assert.deepEqual(modelEstimate(two, "22"), { grams: 40, time_h: 2, time_m: 1 }, "the profile from the link");
+  assert.deepEqual(modelEstimate(two, ""), { grams: 10, time_h: 0, time_m: 10 }, "else the first profile");
+  assert.equal(modelEstimate("<html>no data</html>"), null);
+  assert.equal(modelEstimate(nd({ x: [{ weight: 0, prediction: 0 }] })), null, "zeros are not an estimate");
+  assert.deepEqual(modelEstimate('{"profileId":5,"prediction":3600,"weight":20.5}', ""), { grams: 20.5, time_h: 1, time_m: 0 }, "inline JSON without a script block");
+
+  // The real job replaces the estimate and its cost.
+  const hookFile = files.get(P + "Desk Hook.md").file;
+  await plugin.writeRecord(hookFile, { id: "77", status: ru.statusDone, title: "Desk Hook", grams: 15, time_h: 2, time_m: 0, printed: "2026-11-20", plate: 1, filaments: [] }, [], false);
+  assert.equal(hookFm.estimate, undefined, "estimate flag dropped");
+  assert.equal(hookFm.cost, undefined, "estimated cost dropped, to be worked out again");
+  assert.equal(hookFm.grams, 15);
 
   /* ---------- failed prints ---------- */
   const tr = Plugin._test.taskToRecord;
@@ -409,15 +422,14 @@ fixture = {
   assert.equal(matchSpool({ type: "PETG", color: "D6001C" }, [red, orange], ru), red, "Bambu red and a picked red are one colour");
   assert.equal(matchSpool({ type: "PETG", color: "FF8C00" }, [red], ru), null, "orange is not red");
   assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [{ name: "B", material: "PETG", colorHex: "D3B7A7", status: ru.spoolOpen }], ru), null, "white is not beige");
-  const grey2 = { name: "PETG Grey 2", material: "PETG", colorHex: "808080", status: ru.spoolOpen, remaining: 300 };
-  const grey1 = Object.assign({}, grey, { remaining: 900 });
-  assert.equal(matchSpool({ type: "PETG", color: "808080" }, [grey1, grey2], ru), grey2, "two spools of one colour: the started one");
+  const grey2 = { name: "PETG Grey 2", material: "PETG", colorHex: "808080", status: ru.spoolOpen };
+  assert.equal(matchSpool({ type: "PETG", color: "808080" }, [grey2, grey], ru), grey, "two spools of one colour: by name");
   /* multi-colour, printers, manual choice */
   const { autoSpools } = Plugin._test;
   const white = { name: "PETG White", material: "PETG", colorHex: "FFFFFF", status: ru.spoolOpen };
   const twoColours = { filaments: ["PETG #FFFFFF — 50 g", "PETG #808080 — 20 g"], grams: 70 };
   let pt = autoSpools(Object.assign({}, twoColours), [white], ru, false);
-  assert.deepEqual(pt.usage, ["[[PETG White]]: 50"], "only the matched colour is deducted, not all 70 g");
+  assert.deepEqual(pt.usage, ["[[PETG White]]: 50"], "only the matched colour is counted, not all 70 g");
   const onlyWhite = Object.assign({}, twoColours, pt);
   pt = autoSpools(onlyWhite, [white, grey], ru, false);
   assert.deepEqual(pt.usage, ["[[PETG White]]: 50", "[[PETG Grey]]: 20"], "a spool added later joins an automatic choice");
@@ -425,7 +437,7 @@ fixture = {
   assert.equal(autoSpools(Object.assign({}, onlyWhite, { spool: "[[Mine]]" }), [white, grey], ru, false), null, "changed by hand after the sync");
   pt = autoSpools({ filaments: ["PETG #FFFFFF — 5 g"] }, [white], ru, true);
   assert.equal(pt.spool_late, true);
-  assert.equal(pt.spool_deducted, true, "a finished print linked late is never deducted");
+  assert.equal(pt.spool_deducted, true, "a finished print linked late keeps that link");
   const whiteA = Object.assign({}, white, { name: "White on A", printer: "A" });
   const whiteB = Object.assign({}, white, { name: "White on B", printer: "B" });
   assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [whiteA, whiteB], ru, "B"), whiteB, "the spool of that printer");
@@ -450,13 +462,11 @@ fixture = {
   assert.equal(spFm.material, "PETG");
   assert.equal(spFm.color_hex, "68724D");
   assert.equal(spFm.price, "1590");
-  assert.equal(spFm.remaining_g, "1000");
+  assert.equal(spFm.remaining_g, undefined, "spools do not track what is left");
   assert.ok(plugin.openSpools().some((x) => x.name === "PETG Olive"), "new spool can be picked");
   assert.equal(files.get("3D/Prints/Running gear.md").fm.spool, "[[PETG Olive]]", "new spool goes onto a running print");
   assert.equal(files.get("3D/Prints/Running own.md").fm.spool, "[[Other]]", "a chosen spool is kept");
   assert.equal(files.get("3D/Prints/Old olive.md").fm.spool, "[[PETG Olive]]", "finished prints get the link too");
-  assert.equal(files.get("3D/Prints/Old olive.md").fm.spool_deducted, true, "but nothing is deducted for them");
-  assert.equal(files.get("3D/Prints/Running gear.md").fm.spool_deducted, undefined, "a running print is deducted later");
   assert.equal(await plugin.attachToPrints(), 0, "nothing left to link");
 
   const vase = await plugin.addModel(parseModelUrl("https://makerworld.com/en/models/424242-olive-vase"), "PETG Olive");

@@ -2,7 +2,7 @@
  * Bambu Print Sync — an Obsidian plugin.
  *
  * Pulls print history from the Bambu Lab cloud into notes, links it to the
- * prints you planned, and deducts used filament from your spool notes.
+ * prints you planned, links spools and works out what each print cost.
  *
  * Plain JavaScript, no build step: this file is what Obsidian loads.
  * Not affiliated with or endorsed by Bambu Lab.
@@ -37,7 +37,6 @@ const STRINGS = {
   en: {
     ribbon: "Sync prints from Bambu cloud",
     cmdSync: "Sync prints from Bambu cloud",
-    cmdDeduct: "Deduct filament from spools",
     cmdLogin: "Log in to Bambu account",
     cmdNewPrint: "New print note",
     cmdNewSpool: "New spool note",
@@ -47,7 +46,7 @@ const STRINGS = {
     whyNoMaterial: "no spool of {f}: add one with “New spool”",
     whyNoColor: "{f} — no spool of this colour; there are: {list}",
     whyLater: "will be linked on the next sync",
-    attachDone: "spools linked to prints: {n} (finished prints are not deducted)",
+    attachDone: "spools linked to prints: {n}",
     cmdBase: "Create tracker base",
     sbNoLogin: "Bambu: not logged in",
     sbNever: "Bambu: not synced yet",
@@ -59,10 +58,7 @@ const STRINGS = {
     created: "new: {n}",
     linked: "linked to plan: {n}",
     updated: "updated: {n}",
-    deducted: "deducted from spools: {n}",
     nothingNew: "nothing new",
-    deductDone: "Bambu: filament deducted for {n} print(s)",
-    deductNone: "Bambu: nothing to deduct",
     spoolMissing: "{note}: spool “{spool}” not found",
     imported: "Imported from the Bambu cloud.",
     spoolTitle: "New spool",
@@ -172,8 +168,6 @@ const STRINGS = {
     onStart: "Sync when Obsidian starts",
     interval: "Auto sync, minutes",
     intervalDesc: "0 turns it off.",
-    autoDeduct: "Deduct filament automatically",
-    autoDeductDesc: "After a sync, subtracts grams of finished and failed prints from the spool's remaining_g. Each print is deducted once (spool_deducted).",
     hStatuses: "Status names",
     statusesDesc: "The words written to the status property. Change them to match your notes.",
     stPlanned: "Planned",
@@ -210,12 +204,12 @@ const STRINGS = {
     notPrimary: "Bambu: cloud sync is off on this device. Turn on “Main device” at the top of the plugin settings.",
     hDevice: "Main device",
     primary: "Main device: this one",
-    primaryOn: "✅ This device is the main one: it imports prints from the cloud, deducts filament and writes costs.",
+    primaryOn: "✅ This device is the main one: it imports prints from the cloud and writes costs.",
     primaryOff: "⏸ This device is secondary: it only shows notes that arrive from the main device.",
     cmdPrimary: "Make this device the main one (on/off)",
     nowPrimary: "Bambu: this device is now the main one.",
     nowSecondary: "Bambu: this device is now secondary.",
-    primaryDesc: "One device imports from the Bambu cloud, deducts filament and writes costs. Turning this on while another device is the main one asks first, and the other device then steps down by itself. Stored on this device only.",
+    primaryDesc: "One device imports from the Bambu cloud and writes costs. Turning this on while another device is the main one asks first, and the other device then steps down by itself. Stored on this device only.",
     startDelay: "Wait after start, seconds",
     startDelayDesc: "Gives your vault sync time to download notes from other devices before the first Bambu sync, so no duplicates are created.",
     dupRemoved: "duplicates moved to trash: {n}",
@@ -253,7 +247,6 @@ const STRINGS = {
   ru: {
     ribbon: "Синхронизировать печати из облака Bambu",
     cmdSync: "Синхронизировать печати из облака",
-    cmdDeduct: "Списать пластик с катушек",
     cmdLogin: "Войти в аккаунт Bambu",
     cmdNewPrint: "Новая печать",
     cmdNewSpool: "Новая катушка",
@@ -263,7 +256,7 @@ const STRINGS = {
     whyNoMaterial: "нет катушки {f}: добавь её через «Новая катушка»",
     whyNoColor: "{f} — нет катушки этого цвета; есть: {list}",
     whyLater: "привяжется при следующей синхронизации",
-    attachDone: "катушки привязаны к печатям: {n} (у готовых граммы не списываются)",
+    attachDone: "катушки привязаны к печатям: {n}",
     cmdBase: "Создать базу учёта",
     sbNoLogin: "Bambu: не выполнен вход",
     sbNever: "Bambu: ещё не синхронизировано",
@@ -275,10 +268,7 @@ const STRINGS = {
     created: "новых: {n}",
     linked: "связано с планом: {n}",
     updated: "обновлено: {n}",
-    deducted: "списано с катушек: {n}",
     nothingNew: "нового нет",
-    deductDone: "Bambu: списано по печатям: {n}",
-    deductNone: "Bambu: списывать нечего",
     spoolMissing: "{note}: не найдена катушка «{spool}»",
     imported: "Импортировано из облака Bambu.",
     spoolTitle: "Новая катушка",
@@ -388,8 +378,6 @@ const STRINGS = {
     onStart: "Синхронизировать при запуске Obsidian",
     interval: "Автосинхронизация, минут",
     intervalDesc: "0 — выключено.",
-    autoDeduct: "Списывать пластик автоматически",
-    autoDeductDesc: "После синхронизации вычитает граммы готовых и проваленных печатей из remaining_g катушки. Каждая печать списывается один раз (spool_deducted).",
     hStatuses: "Названия статусов",
     statusesDesc: "Слова, которые плагин пишет в свойство status. Поменяй под свои заметки.",
     stPlanned: "Запланирована",
@@ -426,12 +414,12 @@ const STRINGS = {
     notPrimary: "Bambu: на этом устройстве синхронизация с облаком выключена. Включи «Основное устройство» вверху настроек плагина.",
     hDevice: "Основное устройство",
     primary: "Основное устройство — это",
-    primaryOn: "✅ Это устройство основное: импортирует печати из облака, списывает пластик и считает стоимость.",
+    primaryOn: "✅ Это устройство основное: импортирует печати из облака и считает стоимость.",
     primaryOff: "⏸ Это устройство не основное: только показывает заметки, которые приходят с основного.",
     cmdPrimary: "Сделать это устройство основным (вкл/выкл)",
     nowPrimary: "Bambu: это устройство теперь основное.",
     nowSecondary: "Bambu: это устройство теперь не основное.",
-    primaryDesc: "Импорт из облака Bambu, списание пластика и расчёт стоимости делает одно устройство. Если включить это здесь, пока основным работает другое, плагин сначала спросит, а другое устройство само станет неосновным. Хранится только на этом устройстве.",
+    primaryDesc: "Импорт из облака Bambu и расчёт стоимости делает одно устройство. Если включить это здесь, пока основным работает другое, плагин сначала спросит, а другое устройство само станет неосновным. Хранится только на этом устройстве.",
     startDelay: "Ждать после запуска, секунд",
     startDelayDesc: "Даёт синхронизации хранилища время скачать заметки с других устройств до первой синхронизации с Bambu, чтобы не появились дубли.",
     dupRemoved: "дублей убрано в корзину: {n}",
@@ -520,7 +508,6 @@ const DEFAULT_SETTINGS = Object.assign(
     importSince: "",
     syncOnStart: true,
     intervalMin: 30,
-    autoDeduct: true,
     pasteToQueue: false,
     pasteReplace: false,
     images: true,
@@ -719,7 +706,7 @@ function matchSpool(filament, spools, st, printer) {
   const usable = spools.filter((s) => s.status !== st.spoolEmpty && !(s.printer && printer && s.printer !== printer));
   const byType = usable.filter((s) => s.material && type && first(s.material) === first(type));
   const byColor = byType.filter((s) => s.colorHex && s.colorHex === filament.color);
-  // Several fitting spools: open ones first, then the one with the least left, so a started spool is used up first.
+  // Several fitting spools: open ones first, then by name.
   const pick = (all) => {
     // Spools tied to this printer come before spools that fit any printer.
     const here = printer ? all.filter((s) => s.printer === printer) : [];
@@ -727,8 +714,7 @@ function matchSpool(filament, spools, st, printer) {
     if (list.length <= 1) return list[0] || null;
     const open = list.filter((s) => s.status === st.spoolOpen);
     const pool = open.length ? open : list;
-    const left = (s) => (s.remaining == null || isNaN(s.remaining) ? Infinity : s.remaining);
-    return pool.slice().sort((a, b) => left(a) - left(b) || String(a.name).localeCompare(String(b.name)))[0];
+    return pool.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)))[0];
   };
   if (byColor.length) return pick(byColor);
   // A colour picked by hand is rarely the exact AMS value: accept the nearest close colour.
@@ -806,9 +792,10 @@ function spoolUsage(filaments, spools, st, printer) {
 /**
  * What the plugin should write about spools on a print, or null to leave it alone.
  * A spool the user chose (spool differs from spool_auto) is never touched; an automatic one
- * is worked out again on every sync until the grams are deducted, so spools added later
+ * is worked out again on every sync, so spools added later
  * and every colour of a multi-colour print get picked up.
- * `late`: the print ended before it got this spool, so it must not be deducted.
+ * `late`: the print ended before it got this spool; the link is then kept as it is.
+ * (spool_deducted is a legacy flag from when spools tracked what was left: it freezes the link.)
  */
 function autoSpools(fm, spools, st, late) {
   if (fm.spool_deducted && !fm.spool_late) return null;
@@ -1040,6 +1027,56 @@ function pageImage(html, pageUrl) {
   return "";
 }
 
+/**
+ * Weight and print time a MakerWorld page states for a print profile, or null.
+ * The page carries its data as JSON (__NEXT_DATA__); a profile there has `weight` (g) and
+ * `prediction` (s). The profile from the link (#profileId-…) wins, else the first one.
+ */
+function modelEstimate(html, profileId) {
+  html = String(html || "");
+  const pick = (list) => {
+    const want = String(profileId || "");
+    const hit = want && list.find((p) => String(p.profileId) === want || String(p.id) === want);
+    return hit || list.find((p) => p.isDefault) || list[0];
+  };
+  const usable = (o) => o && typeof o === "object" && num(o.weight) > 0 && num(o.prediction) > 0;
+  const m = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  let found = [];
+  if (m) {
+    try {
+      const seen = new Set();
+      const walk = (v, depth) => {
+        if (!v || typeof v !== "object" || depth > 12 || seen.has(v)) return;
+        seen.add(v);
+        if (Array.isArray(v)) {
+          const list = v.filter(usable);
+          if (list.length && list.length === v.length && !found.length) found = list;
+          v.forEach((x) => walk(x, depth + 1));
+        } else Object.keys(v).forEach((k) => walk(v[k], depth + 1));
+      };
+      walk(JSON.parse(m[1]), 0);
+    } catch (e) {
+      found = [];
+    }
+  }
+  if (!found.length) {
+    // No JSON block: the first object that states both.
+    const re = /\{[^{}]*?"(?:prediction|weight)"\s*:\s*[\d.]+[^{}]*?\}/g;
+    let r;
+    while ((r = re.exec(html))) {
+      const w = r[0].match(/"weight"\s*:\s*([\d.]+)/);
+      const p = r[0].match(/"prediction"\s*:\s*(\d+)/);
+      const id = r[0].match(/"profileId"\s*:\s*"?(\d+)/);
+      const o = w && p && { weight: w[1], prediction: p[1], profileId: id ? id[1] : "" };
+      if (usable(o)) found.push(o);
+    }
+  }
+  if (!found.length) return null;
+  const p = pick(found);
+  const minutes = Math.round(num(p.prediction) / 60);
+  return { grams: Math.round(num(p.weight) * 10) / 10, time_h: Math.floor(minutes / 60), time_m: minutes % 60 };
+}
+
 /** Image type from the first bytes (servers often say "binary/octet-stream"). */
 function sniffImage(buf) {
   const b = new Uint8Array(buf || new ArrayBuffer(0)).subarray(0, 12);
@@ -1109,14 +1146,14 @@ function buildBase(root, st, lang) {
     ? { queue: "Очередь", all: "Все печати", month: "По месяцам", failed: "Провалы", spools: "Катушки",
         status: "Статус", spool: "Катушка", grams: "Граммы", printed: "Дата печати", hours: "Часы", time: "Время",
         cost: "Стоимость", priceKg: "Цена за кг", monthCol: "Месяц", usage: "Расход", material: "Материал",
-        color: "Цвет", brand: "Бренд", remaining: "Остаток, г", spoolStatus: "Состояние", left: "Остаток",
-        warn: "Внимание", low: "⚠️ заканчивается", noDate: "без даты", h: "ч ", m: "м", g: " г", model: "Модель", digits: 0,
+        color: "Цвет", brand: "Бренд", spoolStatus: "Состояние",
+        noDate: "без даты", h: "ч ", m: "м", g: " г", model: "Модель", digits: 0,
         costView: "Стоимость", fil: "Пластик", power: "Электричество", wear: "Износ" }
     : { queue: "Queue", all: "All prints", month: "By month", failed: "Failed", spools: "Spools",
         status: "Status", spool: "Spool", grams: "Grams", printed: "Printed", hours: "Hours", time: "Time",
         cost: "Cost", priceKg: "Price per kg", monthCol: "Month", usage: "Usage", material: "Material",
-        color: "Colour", brand: "Brand", remaining: "Remaining, g", spoolStatus: "State", left: "Left",
-        warn: "Attention", low: "⚠️ running low", noDate: "no date", h: "h ", m: "m", g: " g", model: "Model", digits: 2,
+        color: "Colour", brand: "Brand", spoolStatus: "State",
+        noDate: "no date", h: "h ", m: "m", g: " g", model: "Model", digits: 2,
         costView: "Cost breakdown", fil: "Filament", power: "Electricity", wear: "Wear" };
   const cur = st.currency ? " " + st.currency : "";
   return `filters:
@@ -1128,10 +1165,8 @@ formulas:
   price_kg: if(price_kg, price_kg, if(spool, (spool.asFile().properties.price / spool.asFile().properties.weight_g * 1000).round(0), ""))
   cost: if(cost, cost, if(grams && formula.price_kg, (grams * formula.price_kg / 1000).round(${L.digits}), ""))
   month: if(printed, date(printed).format("YYYY-MM"), ${q(L.noDate)})
-  card: if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "") + if(formula.cost, "  ·  " + formula.cost + ${q(cur)}, "")
+  card: if(estimate, "≈ ", "") + if(grams, grams + ${q(L.g)}, "") + if(formula.time, "  ·  ⏱ " + formula.time, "") + if(formula.cost, "  ·  " + formula.cost + ${q(cur)}, "")
   spool_price_kg: if(price && weight_g, (price / weight_g * 1000).round(0), "")
-  remaining_pct: if(remaining_g && weight_g, (remaining_g / weight_g * 100).round(0) + "%", "")
-  low: if(remaining_g && remaining_g < 150 && spool_status != ${q(st.spoolEmpty)}, ${q(L.low)}, "")
 properties:
   note.status:
     displayName: ${q(L.status)}
@@ -1159,16 +1194,10 @@ properties:
     displayName: ${q(L.color)}
   note.brand:
     displayName: ${q(L.brand)}
-  note.remaining_g:
-    displayName: ${q(L.remaining)}
   note.spool_status:
     displayName: ${q(L.spoolStatus)}
   formula.spool_price_kg:
     displayName: ${q(L.priceKg)}
-  formula.remaining_pct:
-    displayName: ${q(L.left)}
-  formula.low:
-    displayName: ${q(L.warn)}
   note.model_url:
     displayName: ${q(L.model)}
   note.cost_filament:
@@ -1288,15 +1317,10 @@ views:
       - color
       - brand
       - spool_status
-      - remaining_g
-      - formula.remaining_pct
       - formula.spool_price_kg
-      - formula.low
     sort:
-      - property: remaining_g
+      - property: file.name
         direction: ASC
-    summaries:
-      remaining_g: Sum
 `;
 }
 
@@ -1375,7 +1399,6 @@ class BambuPrintSync extends Plugin {
     // ```bambu-print-sync``` block: buttons placed above an embedded base.
     this.registerMarkdownCodeBlockProcessor("bambu-print-sync", (src, el) => this.renderButtons(el));
     this.addCommand({ id: "sync", name: t("cmdSync"), callback: () => this.sync() });
-    this.addCommand({ id: "deduct", name: t("cmdDeduct"), callback: () => this.deductAll(true) });
     this.addCommand({ id: "login", name: t("cmdLogin"), callback: () => new LoginModal(this.app, this).open() });
     this.addCommand({ id: "new-print", name: t("cmdNewPrint"), callback: () => this.newNote("print") });
     this.addCommand({ id: "new-spool", name: t("cmdNewSpool"), callback: () => this.newNote("spool") });
@@ -1643,9 +1666,57 @@ class BambuPrintSync extends Plugin {
     }
   }
 
-  /** Picture for a model link: the preview image its page advertises. */
+  /**
+   * Weight and time the model page states, written into a planned print that has none yet,
+   * so its cost can be worked out before printing. Marked `estimate`: the sync replaces it.
+   */
+  async saveEstimate(file, model, html) {
+    if (model.site !== "MakerWorld") return false;
+    const e = modelEstimate(html, model.profileId || this.fm(file).makerworld_profile);
+    const fm = this.fm(file);
+    if (!e || fm.status !== this.settings.statusPlanned || num(fm.grams) > 0 || num(fm.time_h) || num(fm.time_m)) return false;
+    await this.app.fileManager.processFrontMatter(file, (f) => {
+      f.grams = e.grams;
+      f.time_h = e.time_h;
+      f.time_m = e.time_m;
+      f.estimate = true;
+    });
+    if (this.isPrimary()) await this.updateCost(file, false);
+    return true;
+  }
+
+  /** Planned MakerWorld prints without weight and time: read them from the model page once. */
+  async fillEstimates() {
+    const st = this.settings;
+    this.estimateTried = this.estimateTried || new Set();
+    let n = 0;
+    for (const file of this.filesIn(st.printsFolder)) {
+      const fm = this.fm(file);
+      if (fm.type !== "print" || fm.status !== st.statusPlanned || num(fm.grams) > 0 || this.estimateTried.has(file.path)) continue;
+      const model = parseModelUrl(String(fm.model_url || ""));
+      if (!model || model.site !== "MakerWorld") continue;
+      this.estimateTried.add(file.path);
+      try {
+        const res = await requestUrl({ url: model.url, method: "GET", throw: false });
+        if (res.status < 400 && (await this.saveEstimate(file, model, res.text))) n++;
+      } catch (e) {
+        console.debug("[bambu-print-sync] estimate", e);
+      }
+    }
+    return n;
+  }
+
+  /** Picture (and the weight and time estimate) for a model link, from its page. */
   async fetchModelImage(file, model) {
-    if (!this.settings.images) return false;
+    if (!this.settings.images) {
+      try {
+        const res = await requestUrl({ url: model.url, method: "GET", throw: false });
+        if (res.status < 400) await this.saveEstimate(file, model, res.text);
+      } catch (e) {
+        console.debug("[bambu-print-sync] model page", e);
+      }
+      return false;
+    }
     try {
       const res = await requestUrl({ url: model.url, method: "GET", throw: false });
       if (res.status >= 400) return false;
@@ -1658,6 +1729,7 @@ class BambuPrintSync extends Plugin {
           await this.app.fileManager.renameFile(file, this.uniquePath(dir, name));
         }
       }
+      await this.saveEstimate(file, model, res.text);
       const img = pageImage(res.text, model.url);
       return img ? await this.saveCover(file, img, `${model.site}-${model.id}`) : false;
     } catch (e) {
@@ -1681,7 +1753,6 @@ class BambuPrintSync extends Plugin {
         material: String(fm.material || ""),
         colorHex: hex6(fm.color_hex),
         status: String(fm.spool_status || ""),
-        remaining: fm.remaining_g === "" || fm.remaining_g == null ? null : Number(fm.remaining_g),
         printer: String(fm.printer || "").trim(),
       }));
   }
@@ -1911,7 +1982,7 @@ class BambuPrintSync extends Plugin {
       const prints = this.filesIn(st.printsFolder).map((file) => ({ file, fm: this.fm(file) }));
       const byId = new Map();
       // One note per cloud job. A vault sync can deliver a second copy made on another device:
-      // keep the deducted one, else the oldest, and move the rest to the trash.
+      // keep the frozen one, else the oldest, and move the rest to the trash.
       const groups = new Map();
       for (const p of prints) {
         if (!p.fm.bambu_task_id) continue;
@@ -2005,9 +2076,10 @@ class BambuPrintSync extends Plugin {
       await this.writeDevice({ main: true, last_sync: new Date(st.lastSync).toISOString() });
       this.refreshSettings();
 
-      const deducted = st.autoDeduct ? await this.deductAll(false) : 0;
-      // Spools added after a print was imported: link them now (finished prints are not deducted).
+      // Spools added after a print was imported: link them now.
       const attached = await this.attachToPrints();
+      // Planned models added before the estimate existed: read weight and time from their page.
+      await this.fillEstimates();
       // Prints still without a filament cost get one once a spool or the default price is known.
       for (const f of this.filesIn(st.printsFolder)) await this.updateCost(f, false);
 
@@ -2016,7 +2088,6 @@ class BambuPrintSync extends Plugin {
       if (linked) parts.push(t("linked", { n: linked }));
       if (updated) parts.push(t("updated", { n: updated }));
       if (covers) parts.push(t("covers", { n: covers }));
-      if (deducted) parts.push(t("deducted", { n: deducted }));
       if (attached) parts.push(t("attached", { n: attached }));
       if (removed) parts.push(t("dupRemoved", { n: removed }));
       if (!quiet || parts.length) new Notice(`Bambu: ${parts.length ? parts.join(", ") : t("nothingNew")}`);
@@ -2042,6 +2113,10 @@ class BambuPrintSync extends Plugin {
       fm.type = "print";
       fm.status = rec.status;
       fm.bambu_task_id = rec.id;
+      // The model page's estimate gives way to the real job: its cost is worked out again.
+      if (fm.estimate) {
+        for (const k of ["estimate", "cost", "cost_filament", "cost_power", "cost_wear"]) delete fm[k];
+      }
       if (isNew || !fm.bambu_title) fm.bambu_title = rec.title;
       if (!fm.spool_deducted) {
         fm.grams = rec.grams;
@@ -2069,51 +2144,6 @@ class BambuPrintSync extends Plugin {
     });
   }
 
-  /* ---------- filament deduction ---------- */
-
-  async deductAll(manual) {
-    if (!this.isPrimary()) {
-      if (manual) new Notice(t("notPrimary"), 8000);
-      return 0;
-    }
-    const st = this.settings;
-    const finals = [st.statusDone, st.statusFailed];
-    let count = 0;
-    const problems = [];
-    for (const file of this.filesIn(st.printsFolder)) {
-      const fm = this.fm(file);
-      if (fm.type !== "print" || !finals.includes(fm.status) || fm.spool_deducted || fm.spool_late) continue;
-
-      let parts = parseUsage(fm.usage);
-      if (!parts.length) {
-        const grams = Number(fm.grams);
-        const link = linkTarget(fm.spool);
-        if (!link || !(grams > 0)) continue;
-        parts = [{ link, grams }];
-      }
-      const resolved = parts.map((p) => ({ ...p, file: this.app.metadataCache.getFirstLinkpathDest(p.link, file.path) }));
-      const missing = resolved.find((p) => !(p.file instanceof TFile));
-      if (missing) {
-        problems.push(t("spoolMissing", { note: file.basename, spool: missing.link }));
-        continue;
-      }
-      for (const p of resolved) {
-        await this.app.fileManager.processFrontMatter(p.file, (sfm) => {
-          const left = Number(sfm.remaining_g);
-          const base = isNaN(left) || sfm.remaining_g === "" || sfm.remaining_g == null ? Number(sfm.weight_g) || 0 : left;
-          sfm.remaining_g = Math.max(0, Math.round((base - p.grams) * 10) / 10);
-        });
-      }
-      await this.app.fileManager.processFrontMatter(file, (pfm) => {
-        pfm.spool_deducted = true;
-      });
-      count++;
-    }
-    if (manual) new Notice(count ? t("deductDone", { n: count }) : t("deductNone"));
-    if (problems.length) new Notice("Bambu: " + problems.slice(0, 3).join("; "), 8000);
-    return count;
-  }
-
   /* ---------- notes and base ---------- */
 
   async newNote(kind) {
@@ -2125,7 +2155,7 @@ class BambuPrintSync extends Plugin {
     const path = this.uniquePath(folder, kind === "print" ? t("newPrintName") : t("newSpoolName"));
     const fmLines = kind === "print"
       ? ["type: print", `status: ${q(st.statusPlanned)}`, 'spool: ""', "grams:", "time_h:", "time_m:", "plate: 1", "printed:", `created: ${today}`, "tags:", "  - 3d-print"]
-      : ["type: spool", "material: PLA", "color:", "color_hex:", "brand:", "weight_g: 1000", "price:", "remaining_g: 1000", `spool_status: ${q(st.spoolOpen)}`, `bought: ${today}`, "tags:", "  - 3d-spool"];
+      : ["type: spool", "material: PLA", "color:", "color_hex:", "brand:", "weight_g: 1000", "price:", `spool_status: ${q(st.spoolOpen)}`, `bought: ${today}`, "tags:", "  - 3d-spool"];
     const body = kind === "print" ? `## ${t("notes")}\n` : spoolPrintsBlock(LANG);
     const file = await this.app.vault.create(path, ["---", ...fmLines, "---", "", body].join("\n"));
     await this.app.workspace.getLeaf(false).openFile(file);
@@ -2148,7 +2178,6 @@ class BambuPrintSync extends Plugin {
       ...(o.printer ? [`printer: ${q(o.printer)}`] : []),
       `weight_g: ${weight}`,
       `price: ${num(o.price) || ""}`,
-      `remaining_g: ${weight}`,
       `spool_status: ${q(st.spoolOpen)}`,
       `bought: ${today}`,
       "tags:",
@@ -2183,9 +2212,8 @@ class BambuPrintSync extends Plugin {
   }
 
   /**
-   * Put spools onto prints, matched by material, colour and printer. Running prints are deducted
-   * as usual when they finish. Finished prints that get a spool only now are marked spool_late
-   * and never deducted: the spool was entered with what is left on it.
+   * Put spools onto prints, matched by material, colour and printer. Finished prints that get
+   * a spool only now are marked spool_late, and their link is then kept as it is.
    * `only`: a spool just created, which the metadata cache may not know yet.
    */
   async attachToPrints(only) {
@@ -3094,7 +3122,6 @@ class BambuSettingTab extends PluginSettingTab {
     toggle(t("onStart"), "syncOnStart");
     text(t("interval"), "intervalMin", t("intervalDesc"), (v) => Math.max(0, parseInt(v, 10) || 0));
     text(t("startDelay"), "startDelaySec", t("startDelayDesc"), (v) => Math.max(0, parseInt(v, 10) || 0));
-    toggle(t("autoDeduct"), "autoDeduct", t("autoDeductDesc"));
 
     new Setting(containerEl).setName(t("hModels")).setHeading();
     toggle(t("pasteToQueue"), "pasteToQueue", t("pasteToQueueDesc"));
@@ -3182,4 +3209,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { num, cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, colorDistance, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { num, modelEstimate, cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, colorDistance, PRINTER_POWER, LOCALE_DEFAULTS };
