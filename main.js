@@ -2492,7 +2492,8 @@ class BambuPrintSync extends Plugin {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       const baseName = basePath.split("/").pop();
-      file = await this.app.vault.create(path, "```bambu-print-sync\n```\n\n![[" + baseName + "]]\n");
+      // cssclasses: the dashboard gets the full pane width (styles.css), even with readable line length on.
+      file = await this.app.vault.create(path, "---\ncssclasses:\n  - bambu-dashboard\n---\n```bambu-print-sync\n```\n\n![[" + baseName + "]]\n");
       new Notice(t("dashboardCreated", { path }));
     }
     if (open && file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file);

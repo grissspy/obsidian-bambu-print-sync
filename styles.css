@@ -242,3 +242,17 @@
   border: none;
   border-radius: 50%;
 }
+
+/* A note with the dashboard block uses the whole pane, even with "Readable line length" on:
+   the board needs the room. Other notes keep their width. */
+.bambu-dashboard,
+.markdown-preview-view:has(.bambu-stats),
+.markdown-source-view:has(.bambu-stats) {
+  --file-line-width: 100%;
+}
+
+/* The dashboard's only property is that class: no need to show it. */
+.bambu-dashboard {
+  --metadata-display-editing: none;
+  --metadata-display-reading: none;
+}
