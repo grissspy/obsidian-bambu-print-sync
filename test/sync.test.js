@@ -173,6 +173,12 @@ add(P + "Old box copy B.md", { type: "print", status: ru.statusDone, bambu_task_
 
 const now = Date.now();
 fixture = {
+  "https://api.bambulab.com/v1/iot-service/api/user/bind": {
+    devices: [
+      { dev_id: "01P", name: "Workshop P1S", dev_product_name: "P1S" },
+      { dev_id: "03A", name: "Desk A1 mini", dev_product_name: "A1 mini" },
+    ],
+  },
   "https://api.bambulab.com/v1/user-service/my/tasks": {
     total: 3,
     hits: [
@@ -401,6 +407,27 @@ fixture = {
   const grey2 = { name: "PETG Grey 2", material: "PETG", colorHex: "808080", status: ru.spoolOpen, remaining: 300 };
   const grey1 = Object.assign({}, grey, { remaining: 900 });
   assert.equal(matchSpool({ type: "PETG", color: "808080" }, [grey1, grey2], ru), grey2, "two spools of one colour: the started one");
+  /* multi-colour, printers, manual choice */
+  const { autoSpools } = Plugin._test;
+  const white = { name: "PETG White", material: "PETG", colorHex: "FFFFFF", status: ru.spoolOpen };
+  const twoColours = { filaments: ["PETG #FFFFFF — 50 g", "PETG #808080 — 20 g"], grams: 70 };
+  let pt = autoSpools(Object.assign({}, twoColours), [white], ru, false);
+  assert.deepEqual(pt.usage, ["[[PETG White]]: 50"], "only the matched colour is deducted, not all 70 g");
+  const onlyWhite = Object.assign({}, twoColours, pt);
+  pt = autoSpools(onlyWhite, [white, grey], ru, false);
+  assert.deepEqual(pt.usage, ["[[PETG White]]: 50", "[[PETG Grey]]: 20"], "a spool added later joins an automatic choice");
+  assert.equal(autoSpools(Object.assign({}, twoColours, { spool: "[[Mine]]" }), [white, grey], ru, false), null, "a spool chosen by hand is kept");
+  assert.equal(autoSpools(Object.assign({}, onlyWhite, { spool: "[[Mine]]" }), [white, grey], ru, false), null, "changed by hand after the sync");
+  pt = autoSpools({ filaments: ["PETG #FFFFFF — 5 g"] }, [white], ru, true);
+  assert.equal(pt.spool_late, true);
+  assert.equal(pt.spool_deducted, true, "a finished print linked late is never deducted");
+  const whiteA = Object.assign({}, white, { name: "White on A", printer: "A" });
+  const whiteB = Object.assign({}, white, { name: "White on B", printer: "B" });
+  assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [whiteA, whiteB], ru, "B"), whiteB, "the spool of that printer");
+  assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [whiteA], ru, "B"), null, "a spool of another printer is not used");
+  assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [whiteA, white], ru, "A"), whiteA, "printer's own spool first");
+  assert.equal(matchSpool({ type: "PETG", color: "FFFFFF" }, [whiteA, white], ru, "C"), white, "a spool for any printer");
+
   const { whyNoSpool } = Plugin._test;
   assert.ok(/external|внешняя/.test(whyNoSpool([], [grey], ru)), "no filament data");
   assert.ok(/(no spool of|нет катушки) PLA/.test(whyNoSpool([{ type: "PLA", color: "000000", grams: 5 }], [grey], ru)), "no material");
@@ -433,6 +460,17 @@ fixture = {
   assert.equal(files.get(vase.path).fm.spool, "");
   await plugin.setSpool(vase, "PETG Olive");
   assert.equal(files.get(vase.path).fm.spool, "[[PETG Olive]]");
+
+  /* ---------- several printers ---------- */
+  assert.equal(plugin.settings.printers["Desk A1 mini"].model, "A1 mini", "printers and models learnt during the sync");
+  assert.deepEqual(plugin.knownPrinters().slice(0, 2), ["Desk A1 mini", "Workshop P1S"]);
+  Object.assign(plugin.settings, { powerW: 120, printerPrice: 50000, lifetimeH: 5000 });
+  plugin.settings.printers["Desk A1 mini"].price = 20000;
+  const mini = plugin.costSettings("Desk A1 mini");
+  assert.equal(mini.powerW, 80, "watts from that printer's model");
+  assert.equal(mini.printerPrice, 20000);
+  assert.equal(mini.lifetimeH, 5000, "empty field uses the common value");
+  assert.equal(plugin.costSettings("Unknown").powerW, 120);
 
   /* ---------- spending ---------- */
   const { printStats } = Plugin._test;

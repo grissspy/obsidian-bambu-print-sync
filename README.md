@@ -29,7 +29,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
 | 🔗 **Plan ↔ fact** | A job is linked to the planned note by MakerWorld model ID or by name instead of creating a duplicate. |
-| 🧵 **Spools** | Finds the spool by material and AMS colour (a colour picked by hand matches by name: “Black” = “Black”), splits multi-colour prints across spools, and deducts grams once per print. |
+| 🧵 **Spools** | Finds the spool by material and AMS colour (a colour picked by hand matches by name: “Black” = “Black”), splits multi-colour prints across spools (one per colour; a colour without a spool is not deducted), and deducts grams once per print. A spool can be tied to one printer. |
 | 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. |
 | ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job. The plugin scales it by how long the job ran against the slicer estimate, counts only the time it really ran, and marks the grams as an estimate (`grams_estimated`). A job cancelled before it started costs nothing; without a slicer estimate the full weight is kept as an upper bound. Warm-up and calibration count as printing, so very early failures are slightly overestimated; fix the grams by hand if you know them, the sync will not overwrite them. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
@@ -111,7 +111,9 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | `printed` | `2026-11-26` | sync |
 | `plate` | `1` | you or sync |
 | `filaments` | `PLA #000000 — 42.4 g` | sync |
-| `usage` | `"[[PLA Basic Black]]: 30"` | sync, for multi-colour prints |
+| `usage` | `"[[PLA Basic Black]]: 30"` | sync: grams per spool |
+| `spool_auto` | `"[[PLA Basic Black]]"` | sync: the plugin chose the spool; change `spool` by hand and it is left alone |
+| `spool_late` | `true` | the spool was added after the print, nothing is deducted |
 | `grams_estimated` | `true` | sync, for failed prints |
 | `model_url`, `model_site`, `makerworld_id` | `https://makerworld.com/…` | Add model, or the cloud sync |
 | `cover` | `[[bambu-123.png]]` | model page or Bambu cloud |

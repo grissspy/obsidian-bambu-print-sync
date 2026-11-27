@@ -151,6 +151,15 @@ const STRINGS = {
     regionChina: "China (bambulab.cn), experimental",
     printer: "Printer",
     printerDesc: "Empty means every printer on the account.",
+    filterWarn: "Bambu: only “{name}” is synced, but the account has {n} printers. Clear “Printer” in the settings to sync them all.",
+    hPrinters: "Printers",
+    printersDesc: "Model (sets the power), price and lifetime in hours for each printer. Empty fields use the values above.",
+    printerRate: "Machine cost per hour: {v}",
+    printerSame: "As above",
+    printerPriceShort: "Price",
+    lifetimeShort: "Hours",
+    spoolPrinter: "Printer",
+    spoolPrinterAny: "Any printer",
     printerId: "Printer ID",
     findPrinters: "Find printers",
     noPrinters: "Bambu: no printers found",
@@ -354,6 +363,15 @@ const STRINGS = {
     regionChina: "Китай (bambulab.cn), экспериментально",
     printer: "Принтер",
     printerDesc: "Пусто — все принтеры аккаунта.",
+    filterWarn: "Bambu: синхронизируется только «{name}», а в аккаунте принтеров: {n}. Очисти поле «Принтер» в настройках, чтобы получать все.",
+    hPrinters: "Принтеры",
+    printersDesc: "Модель (задаёт мощность), цена и ресурс в часах для каждого принтера. Пустые поля берутся из общих значений выше.",
+    printerRate: "Стоимость часа: {v}",
+    printerSame: "Как выше",
+    printerPriceShort: "Цена",
+    lifetimeShort: "Часы",
+    spoolPrinter: "Принтер",
+    spoolPrinterAny: "Любой принтер",
     printerId: "ID принтера",
     findPrinters: "Найти принтеры",
     noPrinters: "Bambu: принтеры не найдены",
@@ -507,6 +525,9 @@ const DEFAULT_SETTINGS = Object.assign(
     onboarded: false,
     startDelaySec: 30,
     lastSync: 0,
+    // Per printer (by its name in the cloud): { model, id, price, lifetimeH }. Empty fields use the values above.
+    printers: {},
+    filterWarned: false,
   },
   LOCALE_DEFAULTS[LANG]
 );
@@ -673,15 +694,19 @@ function taskToRecord(task, st, fallbackTitle) {
 }
 
 /** Pick the spool for one filament: same material, same colour where spools have one; must be unambiguous. */
-function matchSpool(filament, spools, st) {
+function matchSpool(filament, spools, st, printer) {
   st = st || LOCALE_DEFAULTS.en;
   const first = (s) => s.toLowerCase().split(/\s+/)[0];
-  const type = filament.type.toLowerCase();
-  const usable = spools.filter((s) => s.status !== st.spoolEmpty);
+  const type = String(filament.type || "").toLowerCase();
+  // A spool tied to one printer is only used for prints on that printer.
+  const usable = spools.filter((s) => s.status !== st.spoolEmpty && !(s.printer && printer && s.printer !== printer));
   const byType = usable.filter((s) => s.material && type && first(s.material) === first(type));
   const byColor = byType.filter((s) => s.colorHex && s.colorHex === filament.color);
   // Several fitting spools: open ones first, then the one with the least left, so a started spool is used up first.
-  const pick = (list) => {
+  const pick = (all) => {
+    // Spools tied to this printer come before spools that fit any printer.
+    const here = printer ? all.filter((s) => s.printer === printer) : [];
+    const list = here.length ? here : all;
     if (list.length <= 1) return list[0] || null;
     const open = list.filter((s) => s.status === st.spoolOpen);
     const pool = open.length ? open : list;
@@ -698,21 +723,24 @@ function matchSpool(filament, spools, st) {
 }
 
 /** Why no spool fits a print: a short reason for the user, or "" when one does. */
-function whyNoSpool(filaments, spools, st) {
+function whyNoSpool(filaments, spools, st, printer) {
   st = st || LOCALE_DEFAULTS.en;
   const list = filaments.filter((f) => f.grams > 0);
   if (!list.length) return t("whyNoFilament");
   const first = (s) => String(s || "").toLowerCase().split(/\s+/)[0];
+  const out = [];
   for (const f of list) {
-    if (matchSpool(f, spools, st)) continue;
+    if (matchSpool(f, spools, st, printer)) continue;
     const label = `${f.type || "?"} ${colorName(f.color, LANG) || "#" + f.color}`;
-    const usable = spools.filter((s) => s.status !== st.spoolEmpty);
+    const usable = spools.filter((s) => s.status !== st.spoolEmpty && !(s.printer && printer && s.printer !== printer));
     const sameType = usable.filter((s) => first(s.material) === first(f.type));
-    if (!sameType.length) return t("whyNoMaterial", { f: label });
-    const names = sameType.map((s) => `${s.name} (${colorName(s.colorHex, LANG) || "—"})`).slice(0, 3).join(", ");
-    return t("whyNoColor", { f: label, list: names });
+    if (!sameType.length) out.push(t("whyNoMaterial", { f: label }));
+    else {
+      const names = sameType.map((s) => `${s.name} (${colorName(s.colorHex, LANG) || "—"})`).slice(0, 3).join(", ");
+      out.push(t("whyNoColor", { f: label, list: names }));
+    }
   }
-  return "";
+  return out.join("; ");
 }
 
 /** Parse `usage` entries like "[[Spool]]: 12.3". */
@@ -741,16 +769,59 @@ function parseFilaments(list) {
 }
 
 /** Grams per matched spool for a print's filaments, most used first. */
-function spoolUsage(filaments, spools, st) {
+function spoolUsage(filaments, spools, st, printer) {
   const usage = [];
   for (const f of filaments) {
-    const s = matchSpool(f, spools, st);
+    const s = matchSpool(f, spools, st, printer);
     if (!s || !(f.grams > 0)) continue;
     const existing = usage.find((u) => u.spool === s);
     if (existing) existing.grams += f.grams;
     else usage.push({ spool: s, grams: f.grams });
   }
   return usage.sort((a, b) => b.grams - a.grams);
+}
+
+/**
+ * What the plugin should write about spools on a print, or null to leave it alone.
+ * A spool the user chose (spool differs from spool_auto) is never touched; an automatic one
+ * is worked out again on every sync until the grams are deducted, so spools added later
+ * and every colour of a multi-colour print get picked up.
+ * `late`: the print ended before it got this spool, so it must not be deducted.
+ */
+function autoSpools(fm, spools, st, late) {
+  if (fm.spool_deducted && !fm.spool_late) return null;
+  const current = String(fm.spool || "").trim();
+  const auto = String(fm.spool_auto || "").trim();
+  if (current && current !== auto) return null;
+  if (!current && Array.isArray(fm.usage) && fm.usage.length && !auto) return null;
+  const usage = spoolUsage(parseFilaments(fm.filaments), spools, st, String(fm.printer || ""));
+  const round = (g) => Math.round(g * 10) / 10;
+  const next = usage.length
+    ? {
+        spool: `[[${usage[0].spool.name}]]`,
+        usage: usage.map((u) => `[[${u.spool.name}]]: ${round(u.grams)}`),
+        spool_auto: `[[${usage[0].spool.name}]]`,
+        spool_late: late || fm.spool_late ? true : undefined,
+        spool_deducted: late || fm.spool_late ? true : fm.spool_deducted,
+      }
+    : {
+        spool: auto ? "" : fm.spool,
+        usage: auto ? undefined : fm.usage,
+        spool_auto: undefined,
+        spool_late: undefined,
+        spool_deducted: fm.spool_late ? undefined : fm.spool_deducted,
+      };
+  const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+  if (Object.keys(next).every((k) => same(fm[k], next[k]))) return null;
+  return next;
+}
+
+/** Apply a patch from autoSpools to front matter; undefined removes a key. */
+function applyPatch(fm, patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete fm[k];
+    else fm[k] = v;
+  }
 }
 
 function linkTarget(value) {
@@ -1367,6 +1438,60 @@ class BambuPrintSync extends Plugin {
     return { json, headers: res.headers || {} };
   }
 
+  /** Remember the printers on the account and their models; warn once if a filter hides some. */
+  async learnPrinters() {
+    const st = this.settings;
+    let list = [];
+    try {
+      list = await this.fetchDevices();
+    } catch (e) {
+      console.debug("[bambu-print-sync] printers", e);
+      return;
+    }
+    if (!st.printers || typeof st.printers !== "object") st.printers = {};
+    let changed = false;
+    for (const d of list) {
+      const name = d.name || d.dev_id;
+      if (!name) continue;
+      const model = d.dev_product_name || d.dev_model_name || "";
+      const cur = st.printers[name] || {};
+      if (!st.printers[name] || cur.id !== d.dev_id || (!cur.model && model)) {
+        st.printers[name] = Object.assign({}, cur, { id: d.dev_id, model: cur.model || model });
+        changed = true;
+      }
+    }
+    if (st.deviceId && list.length > 1 && !st.filterWarned) {
+      const only = list.find((d) => d.dev_id === st.deviceId);
+      new Notice(t("filterWarn", { name: only ? only.name : st.deviceId, n: list.length }), 15000);
+      st.filterWarned = true;
+      changed = true;
+    }
+    if (changed) await this.saveSettings();
+  }
+
+  /** Printer names from the account and from print notes. */
+  knownPrinters() {
+    const names = new Set(Object.keys(this.settings.printers || {}));
+    for (const f of this.filesIn(this.settings.printsFolder)) {
+      const p = this.fm(f).printer;
+      if (p) names.add(String(p));
+    }
+    return [...names].sort();
+  }
+
+  /** Cost settings for one printer: its own model and price over the common ones. */
+  costSettings(printer) {
+    const st = this.settings;
+    const o = (st.printers || {})[String(printer || "")];
+    if (!o) return st;
+    const watts = num(o.powerW) || PRINTER_POWER[o.model] || st.powerW;
+    return Object.assign({}, st, {
+      powerW: watts,
+      printerPrice: o.price === "" || o.price == null ? st.printerPrice : num(o.price),
+      lifetimeH: o.lifetimeH === "" || o.lifetimeH == null ? st.lifetimeH : num(o.lifetimeH),
+    });
+  }
+
   async fetchDevices() {
     const { json } = await this.api("GET", "/v1/iot-service/api/user/bind");
     return (json && json.devices) || [];
@@ -1484,6 +1609,7 @@ class BambuPrintSync extends Plugin {
         colorHex: hex6(fm.color_hex),
         status: String(fm.spool_status || ""),
         remaining: fm.remaining_g === "" || fm.remaining_g == null ? null : Number(fm.remaining_g),
+        printer: String(fm.printer || "").trim(),
       }));
   }
 
@@ -1700,6 +1826,7 @@ class BambuPrintSync extends Plugin {
     if (this.statusEl) this.statusEl.setText(t("sbSyncing"));
     const st = this.settings;
     try {
+      await this.learnPrinters();
       const tasks = await this.fetchTasks();
       const since = st.importSince ? Date.parse(st.importSince) : NaN;
       const records = tasks
@@ -1835,7 +1962,6 @@ class BambuPrintSync extends Plugin {
   }
 
   async writeRecord(file, rec, spools, isNew) {
-    const usage = spoolUsage(rec.filaments, spools, this.settings);
 
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       fm.type = "print";
@@ -1861,11 +1987,8 @@ class BambuPrintSync extends Plugin {
       fm.filaments = filamentLines(rec);
       fm.source = "bambu-cloud";
       if (!fm.created) fm.created = rec.printed || localDate(new Date().toISOString());
-      const manualSpool = fm.spool && String(fm.spool).trim();
-      if (!manualSpool && usage.length) fm.spool = `[[${usage[0].spool.name}]]`;
-      if (!manualSpool && !fm.spool_deducted && usage.length > 1) {
-        fm.usage = usage.map((u) => `[[${u.spool.name}]]: ${Math.round(u.grams * 10) / 10}`);
-      }
+      const patch = autoSpools(fm, spools, this.settings, false);
+      if (patch) applyPatch(fm, patch);
       if (!Array.isArray(fm.tags)) fm.tags = fm.tags ? [fm.tags] : [];
       if (!fm.tags.includes("3d-print")) fm.tags.push("3d-print");
     });
@@ -1884,7 +2007,7 @@ class BambuPrintSync extends Plugin {
     const problems = [];
     for (const file of this.filesIn(st.printsFolder)) {
       const fm = this.fm(file);
-      if (fm.type !== "print" || !finals.includes(fm.status) || fm.spool_deducted) continue;
+      if (fm.type !== "print" || !finals.includes(fm.status) || fm.spool_deducted || fm.spool_late) continue;
 
       let parts = parseUsage(fm.usage);
       if (!parts.length) {
@@ -1947,6 +2070,7 @@ class BambuPrintSync extends Plugin {
       `color: ${q(o.colorName || colorName(o.hex, LANG))}`,
       `color_hex: ${q(hex6(o.hex))}`,
       `brand: ${q(o.brand || "")}`,
+      ...(o.printer ? [`printer: ${q(o.printer)}`] : []),
       `weight_g: ${weight}`,
       `price: ${num(o.price) || ""}`,
       `remaining_g: ${weight}`,
@@ -1959,13 +2083,13 @@ class BambuPrintSync extends Plugin {
       spoolPrintsBlock(LANG),
     ];
     const file = await this.app.vault.create(this.uniquePath(st.spoolsFolder, name), lines.join("\n"));
-    const spool = { file, name: file.basename, material: o.material || "PLA", colorHex: hex6(o.hex), status: st.spoolOpen };
+    const spool = { file, name: file.basename, material: o.material || "PLA", colorHex: hex6(o.hex), status: st.spoolOpen, printer: o.printer || "" };
     const n = await this.attachToPrints(spool);
     new Notice(t("spoolCreated", { name: file.basename }) + (n ? ` ${t("spoolAttached", { n })}` : ""));
     return file;
   }
 
-  /** Running prints that still have no spool, with the reason. */
+  /** Running prints with a colour that has no spool, with the reason. */
   unmatchedRunning() {
     const st = this.settings;
     const spools = this.spoolList();
@@ -1973,17 +2097,19 @@ class BambuPrintSync extends Plugin {
     for (const file of this.filesIn(st.printsFolder)) {
       const fm = this.fm(file);
       if (fm.type !== "print" || fm.status !== st.statusPrinting) continue;
-      if ((fm.spool && String(fm.spool).trim()) || (Array.isArray(fm.usage) && fm.usage.length)) continue;
-      out.push({ name: file.basename, why: whyNoSpool(parseFilaments(fm.filaments), spools, st) || t("whyLater") });
+      const current = String(fm.spool || "").trim();
+      if (current && current !== String(fm.spool_auto || "").trim()) continue; // chosen by hand
+      const why = whyNoSpool(parseFilaments(fm.filaments), spools, st, String(fm.printer || ""));
+      if (why) out.push({ name: file.basename, why });
     }
     return out;
   }
 
   /**
-   * Put spools onto prints that have none yet, matched by material and colour.
-   * Running prints are deducted as usual when they finish. Finished prints only get the link
-   * and are marked deducted: the spool was entered with what is left on it now.
-   * `only` limits it to one (new) spool, which the metadata cache may not know yet.
+   * Put spools onto prints, matched by material, colour and printer. Running prints are deducted
+   * as usual when they finish. Finished prints that get a spool only now are marked spool_late
+   * and never deducted: the spool was entered with what is left on it.
+   * `only`: a spool just created, which the metadata cache may not know yet.
    */
   async attachToPrints(only) {
     const st = this.settings;
@@ -1992,17 +2118,14 @@ class BambuPrintSync extends Plugin {
     let n = 0;
     for (const file of this.filesIn(st.printsFolder)) {
       const fm = this.fm(file);
-      if (fm.type !== "print" || fm.spool_deducted) continue;
-      const running = fm.status === st.statusPrinting;
-      if (!running && !finals.includes(fm.status)) continue;
-      if ((fm.spool && String(fm.spool).trim()) || (Array.isArray(fm.usage) && fm.usage.length)) continue;
-      const usage = spoolUsage(parseFilaments(fm.filaments), spools, st);
-      if (!usage.length || (only && !usage.some((u) => u.spool === only))) continue;
-      await this.app.fileManager.processFrontMatter(file, (pfm) => {
-        pfm.spool = `[[${usage[0].spool.name}]]`;
-        if (usage.length > 1) pfm.usage = usage.map((u) => `[[${u.spool.name}]]: ${Math.round(u.grams * 10) / 10}`);
-        if (!running) pfm.spool_deducted = true;
-      });
+      if (fm.type !== "print") continue;
+      const final = finals.includes(fm.status);
+      if (!final && fm.status !== st.statusPrinting) continue;
+      // Finished and never auto-linked before (or linked late before): late.
+      const late = final && (!!fm.spool_late || !String(fm.spool_auto || "").trim());
+      const patch = autoSpools(fm, spools, st, late);
+      if (!patch) continue;
+      await this.app.fileManager.processFrontMatter(file, (pfm) => applyPatch(pfm, patch));
       n++;
     }
     return n;
@@ -2016,6 +2139,9 @@ class BambuPrintSync extends Plugin {
   async setSpool(file, spoolName) {
     await this.app.fileManager.processFrontMatter(file, (fm) => {
       fm.spool = spoolName ? `[[${spoolName}]]` : "";
+      // Chosen by hand: the sync no longer changes it, and one spool takes all the grams.
+      delete fm.spool_auto;
+      if (!fm.spool_deducted) delete fm.usage;
     });
     if (spoolName) new Notice(t("spoolSet", { name: spoolName }));
   }
@@ -2141,7 +2267,7 @@ class BambuPrintSync extends Plugin {
     const st = this.settings;
     const final = [st.statusDone, st.statusFailed].includes(fm.status);
     if (!force && final && num(fm.cost) > 0) return false;
-    const c = computeCost(fm, (link) => this.spoolPricePerKg(link, file.path), st);
+    const c = computeCost(fm, (link) => this.spoolPricePerKg(link, file.path), this.costSettings(fm.printer));
     if (!c) return false;
     if (Object.keys(c).every((k) => num(fm[k]) === c[k] && fm[k] !== undefined)) return false;
     await this.app.fileManager.processFrontMatter(file, (f) => Object.assign(f, c));
@@ -2593,6 +2719,14 @@ class SpoolModal extends Modal {
       .setName(t("spoolPrice"))
       .setDesc(st.currency || "")
       .addText((c) => c.setPlaceholder("1990").onChange((x) => (v.price = x)));
+    const printers = this.plugin.knownPrinters();
+    if (printers.length > 1) {
+      new Setting(contentEl).setName(t("spoolPrinter")).addDropdown((d) => {
+        d.addOption("", t("spoolPrinterAny"));
+        for (const p of printers) d.addOption(p, p);
+        d.setValue("").onChange((x) => (v.printer = x));
+      });
+    }
     new Setting(contentEl).addButton((b) =>
       b.setCta().setButtonText(t("spoolCreate")).onClick(async () => {
         const file = await this.plugin.createSpool(v);
@@ -2810,11 +2944,9 @@ class BambuSettingTab extends PluginSettingTab {
             const list = await this.plugin.fetchDevices();
             if (!list.length) return new Notice(t("noPrinters"));
             new Notice("Bambu: " + list.map((d) => `${d.name} (${d.dev_product_name || d.dev_model_name}) — ${d.dev_id}`).join("\n"), 10000);
-            if (list.length === 1) {
-              s.deviceId = list[0].dev_id;
-              await save();
-              this.display();
-            }
+            // Remember them for per-printer cost; the field stays empty so every printer is synced.
+            await this.plugin.learnPrinters();
+            this.display();
           } catch (e) {
             new Notice(`Bambu: ${e.message}`, 8000);
           }
@@ -2883,6 +3015,42 @@ class BambuSettingTab extends PluginSettingTab {
       .setName(t("machineRate", { v: `${round2(rate)} ${s.currency || ""}`.trim() }))
       .addButton((b) => b.setButtonText(t("recalc")).onClick(() => this.plugin.recalcAll(true)));
 
+    // Several printers: model, price and lifetime for each; empty fields use the common values above.
+    const printers = this.plugin.knownPrinters();
+    if (printers.length > 1) {
+      new Setting(containerEl).setName(t("hPrinters")).setDesc(t("printersDesc")).setHeading();
+      if (!s.printers || typeof s.printers !== "object") s.printers = {};
+      for (const name of printers) {
+        const o = s.printers[name] || (s.printers[name] = {});
+        const rate = () => {
+          const c = this.plugin.costSettings(name);
+          return (num(c.powerW) * num(c.kwhPrice)) / 1000 + (num(c.lifetimeH) > 0 ? num(c.printerPrice) / num(c.lifetimeH) : 0) + num(c.maintPerHour);
+        };
+        const row = new Setting(containerEl).setName(name).setDesc(t("printerRate", { v: `${round2(rate())} ${s.currency || ""}`.trim() }));
+        row.addDropdown((d) => {
+          d.addOption("", t("printerSame"));
+          for (const m of Object.keys(PRINTER_POWER)) d.addOption(m, `${m} · ~${PRINTER_POWER[m]} W`);
+          d.setValue(PRINTER_POWER[o.model] ? o.model : "").onChange(async (v) => {
+            o.model = v;
+            await save();
+            this.display();
+          });
+        });
+        row.addText((c) =>
+          c.setPlaceholder(t("printerPriceShort")).setValue(o.price == null ? "" : String(o.price)).onChange(async (v) => {
+            o.price = v.trim() === "" ? "" : numeric(v);
+            await save();
+          })
+        );
+        row.addText((c) =>
+          c.setPlaceholder(t("lifetimeShort")).setValue(o.lifetimeH == null ? "" : String(o.lifetimeH)).onChange(async (v) => {
+            o.lifetimeH = v.trim() === "" ? "" : numeric(v);
+            await save();
+          })
+        );
+      }
+    }
+
     new Setting(containerEl).setName(t("hStatuses")).setDesc(t("statusesDesc")).setHeading();
     text(t("stPlanned"), "statusPlanned");
     text(t("stPrinting"), "statusPrinting");
@@ -2901,4 +3069,4 @@ class BambuSettingTab extends PluginSettingTab {
 }
 
 module.exports = BambuPrintSync;
-module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
+module.exports._test = { cloudColors, colorName, printStats, mainDevice, shouldYield, pageTitle, pageImage, imageExt, sniffImage, taskToRecord, matchSpool, whyNoSpool, autoSpools, parseUsage, parseFilaments, spoolUsage, normalizeName, cleanTitle, linkTarget, safeFileName, buildBase, parseModelUrl, computeCost, PRINTER_POWER, LOCALE_DEFAULTS };
