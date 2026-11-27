@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "*"
+  # "Run workflow" on main (also from the GitHub mobile app): releases the version in manifest.json.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,10 +24,15 @@ jobs:
         run: |
           node --check main.js
           npm test
-      - name: Check tag matches manifest version
+      - name: Work out the version
         run: |
           v=$(node -p "require('./manifest.json').version")
-          [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} != manifest $v"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} != manifest $v"; exit 1; }
+          elif [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "Run the release from main, not ${GITHUB_REF_NAME}"; exit 1
+          fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
@@ -37,10 +44,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A release published by hand on GitHub creates the tag first: just attach the files.
-          if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" main.js manifest.json styles.css --clobber
+          # A release published by hand on GitHub already exists: just attach the files.
+          if gh release view "${VERSION}" > /dev/null 2>&1; then
+            gh release upload "${VERSION}" main.js manifest.json styles.css --clobber
           else
-            gh release create "${GITHUB_REF_NAME}" main.js manifest.json styles.css \
-              --title "${GITHUB_REF_NAME}" --generate-notes
+            # Makes the tag on this commit when it does not exist yet.
+            gh release create "${VERSION}" main.js manifest.json styles.css \
+              --target "${GITHUB_SHA}" --title "${VERSION}" --generate-notes
           fi
