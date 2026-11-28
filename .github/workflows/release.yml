@@ -22,7 +22,7 @@ jobs:
           node-version: 20
       - name: Check and test
         run: |
-          node --check main.js
+          npm run build
           npm test
       - name: Work out the version
         run: |

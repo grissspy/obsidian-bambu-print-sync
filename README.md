@@ -235,9 +235,10 @@ Yes, under *Status names* in the settings. The generated base uses them too.
 
 ## Development
 
-The plugin is plain JavaScript with no build step: `main.js` is what Obsidian loads.
+The plugin is plain JavaScript. The source is `src/main.js`; `npm run build` checks it and copies it to `main.js`, the file Obsidian loads, unchanged.
 
 ```bash
+npm run build
 npm test
 ```
 

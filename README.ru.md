@@ -235,9 +235,10 @@ Obsidian Sync, Seafile, iCloud, Syncthing и похожие инструмент
 
 ## Разработка
 
-Плагин написан на чистом JavaScript без сборки: Obsidian загружает `main.js` напрямую.
+Плагин написан на чистом JavaScript. Исходник лежит в `src/main.js`; `npm run build` проверяет его и без изменений копирует в `main.js`, который загружает Obsidian.
 
 ```bash
+npm run build
 npm test
 ```
 
