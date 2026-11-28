@@ -1685,25 +1685,35 @@ class BambuPrintSync extends Plugin {
     return true;
   }
 
-  /** Planned MakerWorld prints without weight and time: read them from the model page once. */
+  /**
+   * Planned prints added by link on another device may arrive without the weight and time
+   * (MakerWorld) or the picture, for example when the phone went to sleep right after adding.
+   * Read the model page once per session and fill in what is missing.
+   */
   async fillEstimates() {
     const st = this.settings;
     this.estimateTried = this.estimateTried || new Set();
-    let n = 0;
+    let covers = 0;
     for (const file of this.filesIn(st.printsFolder)) {
       const fm = this.fm(file);
-      if (fm.type !== "print" || fm.status !== st.statusPlanned || num(fm.grams) > 0 || this.estimateTried.has(file.path)) continue;
+      if (fm.type !== "print" || fm.status !== st.statusPlanned || this.estimateTried.has(file.path)) continue;
       const model = parseModelUrl(String(fm.model_url || ""));
-      if (!model || model.site !== "MakerWorld") continue;
+      if (!model) continue;
+      const needEstimate = model.site === "MakerWorld" && !(num(fm.grams) > 0);
+      const needCover = st.images && !fm.cover;
+      if (!needEstimate && !needCover) continue;
       this.estimateTried.add(file.path);
       try {
         const res = await requestUrl({ url: model.url, method: "GET", throw: false });
-        if (res.status < 400 && (await this.saveEstimate(file, model, res.text))) n++;
+        if (res.status >= 400) continue;
+        if (needEstimate) await this.saveEstimate(file, model, res.text);
+        const img = needCover && pageImage(res.text, model.url);
+        if (img && (await this.saveCover(file, img, `${model.site}-${model.id}`))) covers++;
       } catch (e) {
-        console.debug("[bambu-print-sync] estimate", e);
+        console.debug("[bambu-print-sync] model page", e);
       }
     }
-    return n;
+    return covers;
   }
 
   /** Picture (and the weight and time estimate) for a model link, from its page. */
@@ -2078,8 +2088,8 @@ class BambuPrintSync extends Plugin {
 
       // Spools added after a print was imported: link them now.
       const attached = await this.attachToPrints();
-      // Planned models added before the estimate existed: read weight and time from their page.
-      await this.fillEstimates();
+      // Planned models added on another device without weight, time or picture: read their page.
+      covers += await this.fillEstimates();
       // Prints still without a filament cost get one once a spool or the default price is known.
       for (const f of this.filesIn(st.printsFolder)) await this.updateCost(f, false);
 

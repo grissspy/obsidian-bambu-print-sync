@@ -204,6 +204,9 @@ fixture = {
       JSON.stringify({ props: { pageProps: { design: { id: 555, instances: [{ id: 1, profileId: 11, weight: 12.34, prediction: 5400 }, { id: 2, profileId: 22, weight: 40, prediction: 9000 }] } } } }) +
       "</script>", headers: {} },
   },
+  "https://makerworld.com/en/models/888-phone-stand": {
+    __raw: { status: 200, text: '<meta property="og:image" content="https://makerworld.com/img/clip.jpg">', headers: {} },
+  },
   "https://makerworld.com/img/clip.jpg": { __raw: { status: 200, arrayBuffer: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).buffer, headers: { "content-type": "image/jpeg" } } },
 };
 
@@ -341,6 +344,15 @@ fixture = {
   assert.equal(Plugin._test.sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).buffer), "jpg");
   plugin.settings.images = false;
   assert.equal(await plugin.saveCover(files.get(P + "Shelf bracket.md").file, "https://cdn.example/plate3.png", "z"), false, "images can be turned off");
+
+  // A model queued on another device that never got its picture: the main device fetches it.
+  plugin.settings.images = true;
+  add(P + "Phone stand.md", { type: "print", status: ru.statusPlanned, model_url: "https://makerworld.com/en/models/888-phone-stand" });
+  assert.equal(await plugin.fillEstimates(), 1, "missing picture fetched by the sync");
+  assert.equal(get("Phone stand").cover, "[[MakerWorld-888.jpg]]");
+  assert.equal(await plugin.fillEstimates(), 0, "the page is read once per session");
+  files.delete(P + "Phone stand.md");
+  plugin.settings.images = false;
 
   // A link with no name in it gets the page title.
   plugin.settings.images = true;
