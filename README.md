@@ -25,7 +25,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 |---|---|
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
 | 📎 **Queue from a link** | Click **Add model** above the board, paste a MakerWorld, Printables, Thingiverse or Cults3D link, and a planned print with the model's picture appears in the queue. |
-| 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. It always uses the full width of the pane, even with *Readable line length* on. |
+| 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. It always uses the full width of the pane, even with *Readable line length* on (a dashboard made before 0.9.5 needs `cssclasses: bambu-dashboard` in its properties). |
 | 🎨 **Spools by colour** | *New spool* shows the material and colour pairs your printer actually used, as colour tiles; pick one, or choose a material from the list and a colour with the colour picker. When adding a model you can pick the spool by colour too. |
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
