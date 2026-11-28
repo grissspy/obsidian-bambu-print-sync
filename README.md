@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/grissspy/obsidian-bambu-print-sync?style=flat-square&color=00ae42"></a>
+  <a href="https://github.com/grissspy/obsidian-bambu-print-sync/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/grissspy/obsidian-bambu-print-sync/total?style=flat-square&color=00ae42"></a>
   <img alt="Obsidian 1.9+" src="https://img.shields.io/badge/Obsidian-1.9%2B-7c3aed?style=flat-square">
   <img alt="Desktop and mobile" src="https://img.shields.io/badge/desktop%20%26%20mobile-yes-555?style=flat-square">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/github/license/grissspy/obsidian-bambu-print-sync?style=flat-square&color=555"></a>
@@ -16,7 +17,7 @@
 
 ---
 
-Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync** turns every print into a note, pulls the real time, filament and result from the Bambu Lab cloud, and keeps your spool notes up to date, so a [Bases](https://help.obsidian.md/bases) table can show what is queued, what it cost and how much filament is left.
+Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync** turns every print into a note, pulls the real time, filament and result from the Bambu Lab cloud, links each print to its spool and works out what it cost, so a [Bases](https://help.obsidian.md/bases) board can show what is queued, what is printing and what you have spent.
 
 ## Features
 
@@ -24,7 +25,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 |---|---|
 | 🗂 **Print queue** | Plan prints as notes and see them on a board: Planned → Printing → Done / Failed. |
 | 📎 **Queue from a link** | Click **Add model** above the board, paste a MakerWorld, Printables, Thingiverse or Cults3D link, and a planned print with the model's picture appears in the queue. |
-| 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. |
+| 💰 **Spending at a glance** | The print dashboard opens with tiles: spent in total, this month, last month and on failed prints, with print count, kilograms and hours. It always uses the full width of the pane, even with *Readable line length* on. |
 | 🎨 **Spools by colour** | *New spool* shows the material and colour pairs your printer actually used, as colour tiles; pick one, or choose a material from the list and a colour with the colour picker. When adding a model you can pick the spool by colour too. |
 | 🖼 **Model pictures** | Cards show the model's picture from its page, or the plate preview from the Bambu cloud after printing. |
 | ☁️ **Cloud history** | Imports jobs from your Bambu Lab account: name, status, printer time, grams per filament, plate, printer. |
@@ -32,6 +33,7 @@ Keep your 3D printing log where the rest of your notes live. **Bambu Print Sync*
 | 🧵 **Spools** | Finds the spool by material and AMS colour (a colour picked by hand matches when it is close to the AMS colour: two reds do, red and orange do not), and splits multi-colour prints across spools (one per colour). A spool can be tied to one printer. How much is left on a spool is up to you: the plugin does not track it. |
 | 💸 **Full print cost** | Filament + electricity + printer depreciation + maintenance, written into every print. Pick your Bambu Lab printer model for its typical power draw. A MakerWorld model added to the plan gets the weight and print time from its page, so its cost is known before printing (shown with ≈ until the real job replaces it). |
 | ❌ **Failed prints** | The cloud reports the full sliced weight for a cancelled job. The plugin scales it by how long the job ran against the slicer estimate, counts only the time it really ran, and marks the grams as an estimate (`grams_estimated`). A job cancelled before it started costs nothing; without a slicer estimate the full weight is kept as an upper bound. Warm-up and calibration count as printing, so very early failures are slightly overestimated; fix the grams by hand if you know them, the sync will not overwrite them. |
+| 🖨 **Several printers** | Every printer on your Bambu account is learnt during the sync. Each can have its own model (power draw), price and lifetime, and a spool can be tied to one printer. |
 | 🌍 **English and Russian** | Follows Obsidian's language. Status words are configurable. |
 
 ## Screenshots
@@ -82,11 +84,11 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 
 1. Install the plugin (Community plugins → Browse → *Bambu Print Sync*), or put `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/grissspy/obsidian-bambu-print-sync/releases/latest) into `.obsidian/plugins/bambu-print-sync/`.
 2. Open the plugin settings, click **Log in** and enter your Bambu Lab email and password. If Bambu sends a code by email, the plugin asks for it.
-3. On first start the plugin offers to create the prints and spools folders, the tracker base (`Print tracker.base`) and the **Print dashboard** note: buttons on top, the board below. Skipped it? Run **Create print dashboard** later.
+3. On first start the plugin offers to create the prints and spools folders, the tracker base (`Print tracker.base`) and the **Print dashboard** note: spending tiles and buttons on top, the board below. Skipped it? Run **Create print dashboard** later.
 4. Set **Import prints since** to today if you do not want your whole history, and fill in the **Print cost** section (see below).
 5. Queue a model with the **Add model** button on the dashboard (or the ➕ icon in the ribbon) and paste its link.
-6. Add your spools with **New spool note**, filling `material`, `color_hex`, `price` and `weight_g`.
-7. Click the printer icon in the ribbon, or wait for the automatic sync.
+6. Add your spools with the **New spool** button: pick a colour your printer has used (or a material and any colour), then fill in the brand, weight and price.
+7. Click the printer icon in the ribbon, or wait for the automatic sync. The status bar shows when the last sync ran.
 
 ### Commands
 
@@ -98,9 +100,10 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | New spool note | Opens the spool window: colour tiles from your prints, material list, colour picker, brand, weight and price. |
 | Choose the spool for this print | Pick a spool by colour for the open print note. Also a spool button at the top of the note and an item in its ⋮ menu. |
 | Link spools to prints without one | Sets the spool on prints that have none. A new spool and every sync do this by themselves. For running prints without a spool it says why none was found. |
-| Create print dashboard | Creates a note with spending tiles and the **Add model**, **Sync** and **Empty card** buttons above the embedded tracker. |
+| Create print dashboard | Creates a note with spending tiles and the **Add model**, **Refresh**, **Empty card** and **New spool** buttons above the embedded tracker. |
 | Create tracker base | Writes the Bases file with Queue, All prints, By month, Failed, Cost breakdown and Spools views. |
 | Recalculate cost of all prints | Rewrites the cost of every print with the current rates. |
+| Make this device the main one (on/off) | Switches which device imports from the cloud (see *Using it with a vault sync*). |
 | Log in to Bambu account | Opens the login window. |
 
 ## Note properties
@@ -136,7 +139,10 @@ Your notes stay plain Markdown with properties. The plugin only reads and writes
 | Property | Example | Notes |
 |---|---|---|
 | `material` | `PLA Basic` | The first word is matched against the AMS filament type. |
+| `color` | `Black` | Colour name, shown in pickers. |
 | `color_hex` | `000000` | AMS colour without `#`. Leave empty to match by material only. |
+| `brand` | `Bambu Lab` | For you; not used for matching. |
+| `printer` | `Workshop P1S` | Optional: use this spool only on that printer. |
 | `weight_g` | `1000` | Filament weight on a full spool. |
 | `price` | `1990` | Price of the spool in your currency. |
 | `spool_status` | `In use`, `Empty` | Empty spools are never matched. |
@@ -154,7 +160,7 @@ Set the rates once in the settings:
 | Setting | Example | Used for |
 |---|---|---|
 | Printer model | Bambu Lab P2S · ~130 W | fills in the average power; edit the watts if you measured yours |
-| Filament price per kg | When a print has no spool or its spool has no price. |
+| Filament price per kg | `22` | when a print has no spool or its spool has no price |
 | Electricity price per kWh | `0.18` | `hours × W ÷ 1000 × price` |
 | Printer price, lifetime hours | `800`, `4000` | depreciation: `hours × price ÷ lifetime` |
 | Maintenance per hour | `0.05` | nozzles, plates, belts, lubricant |
@@ -167,6 +173,8 @@ cost = grams × price per kg ÷ 1000            (filament, per spool for multi-c
 ```
 
 The plugin writes `cost_filament`, `cost_power`, `cost_wear` and `cost` into a print whenever its grams, time or spool change. Once a print is done or failed, its cost stays as it was, so changing your electricity tariff does not rewrite history; run **Recalculate cost of all prints** when you want that. The settings show your machine cost per printing hour. Power values for printer models are typical averages, not measurements.
+
+**Several printers.** The *Printers* section of the settings lists every printer found in your account. Give each one its own model, price and lifetime; empty fields use the values above.
 
 ### Queue from a link
 
@@ -181,7 +189,7 @@ You can put the buttons into any note yourself:
 
 Prefer pasting links straight into notes? Turn on *Queue models from pasted links* in the settings: then a model link pasted into any note creates a card too.
 
-**Pictures.** The plugin saves the picture the model page offers for link previews into an `Images` folder next to your notes and shows it on the queue card. Some sites block automated requests; then the card stays without a picture until you print, when the plate preview from the Bambu cloud is used. Turn off *Model images* if you do not want this. Imported prints also get a link to their MakerWorld model when the cloud knows it. Grams and time come from the cloud sync once you print, or you fill them in after slicing.
+**Pictures.** The plugin saves the picture the model page offers for link previews into an `Images` folder next to your notes and shows it on the queue card. Some sites block automated requests; then the card stays without a picture until you print, when the plate preview from the Bambu cloud is used. Turn off *Model images* if you do not want this. Imported prints also get a link to their MakerWorld model when the cloud knows it. **Weight and time before printing.** For a MakerWorld model the plugin also reads the weight and print time of the profile in your link (or the first one) from the same page, so the card shows an estimated cost (marked ≈) while it is still planned. Once you print, the real numbers from the cloud replace it. For other sites, fill in grams and time after slicing.
 
 ## Using it with a vault sync
 
@@ -204,7 +212,7 @@ This plugin needs a **Bambu Lab account** and talks to the **Bambu Lab cloud** o
 - `bambulab.com/api/sign-in/tfa` only if your account uses two-factor authentication;
 - the Bambu CDN, to download plate preview images of your prints (if *Model images* is on).
 
-When you add a model by link, the plugin opens **that model page** (MakerWorld, Printables, Thingiverse or Cults3D) once to read its preview picture, and downloads the picture. Nothing is sent to those sites except the normal page request. Turn off *Model images* to skip this.
+When you add a model by link, the plugin opens **that model page** (MakerWorld, Printables, Thingiverse or Cults3D) once to read its name, its preview picture and, on MakerWorld, its weight and print time, and downloads the picture. Nothing is sent to those sites except the normal page request. With *Model images* off, the picture is skipped; the page is still read for the weight and time of MakerWorld models.
 
 Your password is sent to Bambu Lab once to get a token and is **never stored**. The token (valid about three months) is saved in `.obsidian/plugins/bambu-print-sync/data.json` inside your vault, so it travels with your vault sync. No other data goes anywhere: no telemetry, no analytics, no third-party servers.
 
@@ -233,7 +241,7 @@ The plugin is plain JavaScript with no build step: `main.js` is what Obsidian lo
 npm test
 ```
 
-The test runs the sync, spool and cost logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json` and `versions.json`, then push a tag with the same number; the workflow attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
+The test runs the sync, spool and cost logic against a fake vault and a fake cloud. To release, bump `version` in `manifest.json`, `package.json`, `package-lock.json` and `versions.json`, then push a tag with the same number; the workflow runs the tests and attaches `main.js`, `manifest.json` and `styles.css` to a GitHub release.
 
 ## Support
 
